@@ -65,8 +65,17 @@ public class DeviceService {
         Device device = deviceMapper.selectOne(
                 new QueryWrapper<Device>().eq("device_sn", deviceSn).last("LIMIT 1"));
         if (device == null || device.status == null || device.status != 1) return null;
-        if (!MessageDigest.isEqual(device.secret.getBytes(), secret.getBytes())) return null;
-        return device;
+        String stored = device.secret;
+        if (stored == null) return null;
+        // 新数据存 SHA-256；历史明文 secret 仍按明文比对（双轨兼容）
+        boolean ok;
+        if (stored.length() == 64 && stored.chars().allMatch(c ->
+                (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+            ok = MessageDigest.isEqual(stored.getBytes(), DigestUtil.sha256Hex(secret).getBytes());
+        } else {
+            ok = MessageDigest.isEqual(stored.getBytes(), secret.getBytes());
+        }
+        return ok ? device : null;
     }
 
     public Device create(String deviceSn, String name, Long groupId) {
@@ -77,23 +86,25 @@ public class DeviceService {
         d.deviceSn = deviceSn;
         d.name = name;
         d.groupId = groupId;
-        d.secret = DigestUtil.randomToken(32);
+        String rawSecret = DigestUtil.randomToken(32);
+        d.secret = DigestUtil.sha256Hex(rawSecret); // 落库只存哈希
         d.status = 1;
         d.online = 0;
         deviceMapper.insert(d);
         if (groupId != null && groupId > 0) addMember(groupId, d.id);
+        d.secret = rawSecret; // 明文仅本次返回给调用方
         return d;
     }
 
     public String resetSecret(long id) {
         Device d = require(id);
-        String secret = DigestUtil.randomToken(32);
+        String rawSecret = DigestUtil.randomToken(32);
         Device upd = new Device();
         upd.id = d.id;
-        upd.secret = secret;
+        upd.secret = DigestUtil.sha256Hex(rawSecret);
         deviceMapper.updateById(upd);
         sessionManager.forceClose(String.valueOf(id));
-        return secret;
+        return rawSecret;
     }
 
     public void update(long id, String name, Long groupId, Integer status) {
@@ -108,6 +119,9 @@ public class DeviceService {
             if (groupId > 0) addMember(groupId, id);
         }
         deviceMapper.updateById(upd);
+        if (status != null && status == 0) {
+            sessionManager.forceClose(String.valueOf(id)); // 禁用立即断开现有连接
+        }
     }
 
     public void delete(long id) {

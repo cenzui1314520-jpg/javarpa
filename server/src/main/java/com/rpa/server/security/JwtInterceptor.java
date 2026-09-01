@@ -2,6 +2,7 @@ package com.rpa.server.security;
 
 import com.rpa.server.common.ApiException;
 import com.rpa.server.common.JwtUtil;
+import com.rpa.server.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
@@ -11,9 +12,11 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class JwtInterceptor implements HandlerInterceptor {
     private final JwtUtil jwtUtil;
+    private final AuthService authService;
 
-    public JwtInterceptor(JwtUtil jwtUtil) {
+    public JwtInterceptor(JwtUtil jwtUtil, AuthService authService) {
         this.jwtUtil = jwtUtil;
+        this.authService = authService;
     }
 
     @Override
@@ -25,8 +28,9 @@ public class JwtInterceptor implements HandlerInterceptor {
             return reject(response);
         }
         try {
-            long adminId = jwtUtil.verify(auth.substring(7));
-            request.setAttribute("adminId", adminId);
+            JwtUtil.AdminToken t = jwtUtil.verifyWithIssuedAt(auth.substring(7));
+            authService.assertTokenFresh(t.adminId(), t.issuedAtMillis());
+            request.setAttribute("adminId", t.adminId());
             return true;
         } catch (ApiException e) {
             return reject(response);

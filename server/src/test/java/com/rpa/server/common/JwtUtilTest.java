@@ -7,23 +7,47 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class JwtUtilTest {
 
+    private static JwtUtil util() {
+        return new JwtUtil("unit-test-secret-0123456789abcdef0123456789", 1, "dev");
+    }
+
     @Test
     void issueAndVerifyRoundTrip() {
-        JwtUtil util = new JwtUtil("unit-test-secret-0123456789abcdef0123456789", 1);
+        JwtUtil util = util();
         String token = util.issue(42L, "admin");
         assertEquals(42L, util.verify(token));
     }
 
     @Test
+    void verifyWithIssuedAtReturnsIat() {
+        JwtUtil util = util();
+        long before = System.currentTimeMillis();
+        String token = util.issue(7L, "admin");
+        JwtUtil.AdminToken t = util.verifyWithIssuedAt(token);
+        assertEquals(7L, t.adminId());
+        org.junit.jupiter.api.Assertions.assertTrue(t.issuedAtMillis() >= before - 1000);
+    }
+
+    @Test
     void invalidTokenRejected() {
-        JwtUtil util = new JwtUtil("unit-test-secret-0123456789abcdef0123456789", 1);
-        assertThrows(ApiException.class, () -> util.verify("garbage.token.value"));
+        assertThrows(ApiException.class, () -> util().verify("garbage.token.value"));
     }
 
     @Test
     void expiredTokenRejected() {
-        JwtUtil util = new JwtUtil("unit-test-secret-0123456789abcdef0123456789", 0);
+        JwtUtil util = new JwtUtil("unit-test-secret-0123456789abcdef0123456789", 0, "dev");
         String token = util.issue(1L, "admin");
         assertThrows(ApiException.class, () -> util.verify(token));
+    }
+
+    @Test
+    void defaultSecretRejectedOutsideDev() {
+        assertThrows(IllegalStateException.class, () ->
+                new JwtUtil("change-me-in-production-0123456789abcdef", 1, "prod"));
+    }
+
+    @Test
+    void defaultSecretAllowedInDev() {
+        new JwtUtil("change-me-in-production-0123456789abcdef", 1, "dev");
     }
 }

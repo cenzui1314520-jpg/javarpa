@@ -15,13 +15,23 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class AuthService {
+    private static final int MAX_LOGIN_FAILURES = 5;
+    private static final long LOGIN_LOCK_MILLIS = 15 * 60_000L;
+
     private final AdminUserMapper adminUserMapper;
     private final ApiTokenMapper apiTokenMapper;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     private final JwtUtil jwtUtil;
+    // 用户名 -> [失败次数, 锁定截止时间]；单实例内存实现已满足部署形态
+    private final Map<String, LoginState> loginFailures = new ConcurrentHashMap<>();
+    // adminId -> 最近一次改密时间，早于该时间签发的 token 一律失效
+    private final Map<Long, Long> passwordChangedAt = new ConcurrentHashMap<>();
+
+    private record LoginState(int count, long lockedUntil) {}
 
     public AuthService(AdminUserMapper adminUserMapper, ApiTokenMapper apiTokenMapper, JwtUtil jwtUtil) {
         this.adminUserMapper = adminUserMapper;
@@ -31,12 +41,19 @@ public class AuthService {
 
     public Map<String, Object> login(String username, String password) {
         if (username == null || password == null) throw new ApiException("用户名或密码错误");
+        LoginState state = loginFailures.get(username);
+        long now = System.currentTimeMillis();
+        if (state != null && state.lockedUntil() > now) {
+            throw new ApiException(429, "失败次数过多，账号已临时锁定，请稍后再试");
+        }
         AdminUser user = adminUserMapper.selectOne(
                 new QueryWrapper<AdminUser>().eq("username", username).last("LIMIT 1"));
         if (user == null || !encoder.matches(password, user.passwordHash)) {
+            recordLoginFailure(username, now);
             throw new ApiException("用户名或密码错误");
         }
         if (user.status == null || user.status != 1) throw new ApiException("账号已禁用");
+        loginFailures.remove(username);
         Map<String, Object> result = new HashMap<>();
         result.put("token", jwtUtil.issue(user.id, user.username));
         Map<String, Object> admin = new HashMap<>();
@@ -46,6 +63,23 @@ public class AuthService {
         admin.put("role", user.role);
         result.put("admin", admin);
         return result;
+    }
+
+    private void recordLoginFailure(String username, long now) {
+        LoginState state = loginFailures.compute(username, (k, old) ->
+                new LoginState((old == null ? 0 : old.count()) + 1, 0));
+        if (state.count() >= MAX_LOGIN_FAILURES) {
+            loginFailures.put(username, new LoginState(state.count(), now + LOGIN_LOCK_MILLIS));
+        }
+    }
+
+    /** @throws ApiException(401) 若 token 签发时间早于最近一次改密 */
+    public void assertTokenFresh(long adminId, long issuedAtMillis) {
+        Long changed = passwordChangedAt.get(adminId);
+        // JWT iat 精度为秒，真实签发时间落在 [iat, iat+1s)，容差 1s 防止同秒内误杀
+        if (changed != null && issuedAtMillis + 1000 <= changed) {
+            throw new ApiException(401, "密码已修改，请重新登录");
+        }
     }
 
     public AdminUser byId(long id) {
@@ -66,6 +100,7 @@ public class AuthService {
         upd.id = id;
         upd.passwordHash = encoder.encode(newPassword);
         adminUserMapper.updateById(upd);
+        passwordChangedAt.put(id, System.currentTimeMillis());
     }
 
     // ---------- API tokens for external systems ----------

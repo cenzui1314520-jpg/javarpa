@@ -19,6 +19,10 @@ public class WebConfig implements WebMvcConfigurer {
     @Value("${rpa.upload-dir:./data/scripts}")
     private String uploadDir;
 
+    // 逗号分隔的允许来源，默认全放开以兼容现有部署，生产建议收紧
+    @Value("${rpa.cors-origins:*}")
+    private String corsOrigins;
+
     public WebConfig(JwtInterceptor jwtInterceptor,
                      ApiTokenInterceptor apiTokenInterceptor,
                      DeviceAuthInterceptor deviceAuthInterceptor) {
@@ -33,7 +37,6 @@ public class WebConfig implements WebMvcConfigurer {
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         "/auth/login", "/ws/**", "/files/**", "/open/**",
-                        "/swagger-ui/**", "/v3/api-docs/**", "/webjars/**",
                         "/error", "/favicon.ico");
         registry.addInterceptor(apiTokenInterceptor).addPathPatterns("/open/**");
         registry.addInterceptor(deviceAuthInterceptor).addPathPatterns("/files/**");
@@ -50,7 +53,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOriginPatterns("*")
+                .allowedOriginPatterns(corsOrigins.split(","))
                 .allowedMethods("*")
                 .allowedHeaders("*");
     }

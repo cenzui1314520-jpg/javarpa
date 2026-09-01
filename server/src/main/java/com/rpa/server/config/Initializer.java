@@ -23,14 +23,22 @@ public class Initializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         if (adminUserMapper.selectCount(null) == 0) {
+            String envPassword = System.getenv("RPA_ADMIN_PASSWORD");
+            boolean fromEnv = envPassword != null && envPassword.length() >= 6;
+            String password = fromEnv ? envPassword : DigestUtil.randomToken(16);
             AdminUser admin = new AdminUser();
             admin.username = "admin";
-            admin.passwordHash = encoder.encode("admin123");
+            admin.passwordHash = encoder.encode(password);
             admin.nickname = "管理员";
             admin.role = "ADMIN";
             admin.status = 1;
             adminUserMapper.insert(admin);
-            log.info("default admin created: admin / admin123 (please change the password)");
+            if (fromEnv) {
+                log.warn("default admin created from RPA_ADMIN_PASSWORD, change it after first login");
+            } else {
+                // 不再使用可预测的弱口令，随机密码仅此一次展示
+                log.warn("default admin created: admin / {} (random, shown ONCE — save and change it)", password);
+            }
         }
     }
 }

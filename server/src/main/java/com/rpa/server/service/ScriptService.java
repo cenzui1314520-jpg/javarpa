@@ -3,10 +3,15 @@ package com.rpa.server.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.rpa.server.common.ApiException;
 import com.rpa.server.common.DigestUtil;
+import com.rpa.server.entity.Device;
 import com.rpa.server.entity.Script;
 import com.rpa.server.entity.ScriptVersion;
+import com.rpa.server.entity.Task;
+import com.rpa.server.entity.TaskDevice;
 import com.rpa.server.mapper.ScriptMapper;
 import com.rpa.server.mapper.ScriptVersionMapper;
+import com.rpa.server.mapper.TaskDeviceMapper;
+import com.rpa.server.mapper.TaskMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,13 +33,21 @@ public class ScriptService {
 
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper versionMapper;
+    private final TaskMapper taskMapper;
+    private final TaskDeviceMapper taskDeviceMapper;
+    private final PublishService publishService;
 
     @Value("${rpa.upload-dir:./data/scripts}")
     private String uploadDir;
 
-    public ScriptService(ScriptMapper scriptMapper, ScriptVersionMapper versionMapper) {
+    public ScriptService(ScriptMapper scriptMapper, ScriptVersionMapper versionMapper,
+                         TaskMapper taskMapper, TaskDeviceMapper taskDeviceMapper,
+                         PublishService publishService) {
         this.scriptMapper = scriptMapper;
         this.versionMapper = versionMapper;
+        this.taskMapper = taskMapper;
+        this.taskDeviceMapper = taskDeviceMapper;
+        this.publishService = publishService;
     }
 
     public Script create(String name, String pkgName, String description) {
@@ -180,5 +193,21 @@ public class ScriptService {
     public ScriptVersion findVersion(long scriptId, int versionCode) {
         return versionMapper.selectOne(new QueryWrapper<ScriptVersion>()
                 .eq("script_id", scriptId).eq("version_code", versionCode).last("LIMIT 1"));
+    }
+
+    /** 设备仅允许下载：灰度目标版本 / stable 版本 / 其进行中任务所需的版本。 */
+    public boolean canDeviceDownload(Device device, String pkgName, int versionCode) {
+        Script script = scriptMapper.selectOne(new QueryWrapper<Script>()
+                .eq("pkg_name", pkgName).last("LIMIT 1"));
+        if (script == null) return false;
+        if (publishService.resolveTargetVersion(script.id, device) == versionCode) return true;
+        if (script.stableVersionCode != null && script.stableVersionCode == versionCode) return true;
+        List<TaskDevice> active = taskDeviceMapper.selectList(new QueryWrapper<TaskDevice>()
+                .eq("device_id", device.id).in("status", "PENDING", "RUNNING", "PAUSED"));
+        if (active.isEmpty()) return false;
+        List<Long> taskIds = active.stream().map(td -> td.taskId).toList();
+        Long used = taskMapper.selectCount(new QueryWrapper<Task>()
+                .in("id", taskIds).eq("script_id", script.id).eq("version_code", versionCode));
+        return used != null && used > 0;
     }
 }
