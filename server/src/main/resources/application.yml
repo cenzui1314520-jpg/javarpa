@@ -1,0 +1,48 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: rpa-server
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/rpa?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
+  jackson:
+    default-property-inclusion: non_null
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+
+rpa:
+  jwt-secret: ${RPA_JWT_SECRET:change-me-in-production-0123456789abcdef}
+  jwt-expire-hours: 24
+  upload-dir: ${RPA_UPLOAD_DIR:./data/scripts}
+  heartbeat-timeout-seconds: 90
+  offline-scan-seconds: 30
+  log-retention-days: 30
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.rpa.server: info

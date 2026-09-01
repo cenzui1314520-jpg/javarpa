@@ -1,0 +1,30 @@
+# Java
+target/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
+*.keystore
+
+# Web
+web/node_modules/
+web/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Runtime data
+server/data/
+data/
+logs/
+*.log

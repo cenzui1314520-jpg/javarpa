@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RPA 核心引擎</string>
+    <string name="acc_service_name">RPA 自动化服务</string>
+    <string name="acc_desc">用于执行云端下发的自动化脚本，需要读取屏幕内容与执行手势操作。</string>
+</resources>
