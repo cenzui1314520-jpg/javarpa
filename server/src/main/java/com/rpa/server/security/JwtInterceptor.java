@@ -1,6 +1,5 @@
 package com.rpa.server.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rpa.server.common.ApiException;
 import com.rpa.server.common.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,7 +11,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class JwtInterceptor implements HandlerInterceptor {
     private final JwtUtil jwtUtil;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public JwtInterceptor(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;

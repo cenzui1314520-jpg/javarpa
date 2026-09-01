@@ -26,9 +26,11 @@ public class DeviceSessionManager {
         log.info("device online: {} (total {})", deviceId, sessions.size());
     }
 
-    public void unregister(String deviceId, WebSocketSession session) {
-        sessions.remove(deviceId, session);
+    /** @return true 若被移除的 session 仍是当前注册者（未被新连接顶替） */
+    public boolean unregister(String deviceId, WebSocketSession session) {
+        boolean wasCurrent = sessions.remove(deviceId, session);
         log.info("device offline: {} (total {})", deviceId, sessions.size());
+        return wasCurrent;
     }
 
     public boolean isOnline(String deviceId) {

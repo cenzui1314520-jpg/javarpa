@@ -33,7 +33,9 @@ public class DeviceController {
                                        @RequestParam(required = false) Integer online,
                                        @RequestParam(defaultValue = "1") int page,
                                        @RequestParam(defaultValue = "10") int size) {
-        return R.ok(deviceService.page(keyword, groupId, online, page, size));
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 200);
+        return R.ok(deviceService.page(keyword, groupId, online, safePage, safeSize));
     }
 
     @PostMapping
@@ -66,8 +68,14 @@ public class DeviceController {
 
     @PostMapping("/{id}/command")
     public R<Void> command(@PathVariable long id, @RequestBody Map<String, Object> body) {
-        long taskId = Long.parseLong(String.valueOf(body.get("taskId")));
-        String action = String.valueOf(body.get("action"));
+        long taskId;
+        try {
+            taskId = Long.parseLong(String.valueOf(body.get("taskId")));
+        } catch (NumberFormatException e) {
+            throw new com.rpa.server.common.ApiException("taskId 必须为整数");
+        }
+        String action = body.get("action") == null ? null : String.valueOf(body.get("action"));
+        if (action == null) throw new com.rpa.server.common.ApiException("action 不能为空");
         taskControlService.controlDevice(taskId, id, action);
         return R.ok();
     }

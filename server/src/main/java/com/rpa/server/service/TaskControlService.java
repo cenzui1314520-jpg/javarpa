@@ -1,6 +1,7 @@
 package com.rpa.server.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.rpa.server.common.ApiException;
 import com.rpa.server.entity.Device;
 import com.rpa.server.entity.Script;
@@ -159,14 +160,17 @@ public class TaskControlService {
         }
     }
 
+    private static final List<String> TERMINAL_STATUSES = List.of("SUCCESS", "FAILED", "STOPPED");
+
     public void updateProgress(long taskId, long deviceId, int successCount, int failCount) {
-        TaskDevice td = findTd(taskId, deviceId);
-        if (td == null) return;
-        td.status = "RUNNING";
-        td.successCount = successCount;
-        td.failCount = failCount;
-        td.lastRunAt = LocalDateTime.now();
-        taskDeviceMapper.updateById(td);
+        // 条件更新：终态行不再被心跳覆盖回 RUNNING，避免读-改-写并发丢失更新
+        taskDeviceMapper.update(null, new UpdateWrapper<TaskDevice>()
+                .set("success_count", successCount)
+                .set("fail_count", failCount)
+                .set("last_run_at", LocalDateTime.now())
+                .set("status", "RUNNING")
+                .eq("task_id", taskId).eq("device_id", deviceId)
+                .notIn("status", TERMINAL_STATUSES));
     }
 
     /** Handle RESULT reported by device, including failure retry. */
@@ -178,13 +182,20 @@ public class TaskControlService {
 
         TaskDevice td = findTd(taskId, deviceId);
         if (td == null) return;
+        boolean terminal = TERMINAL_STATUSES.contains(status);
+        int updated = taskDeviceMapper.update(null, new UpdateWrapper<TaskDevice>()
+                .set("success_count", successCount)
+                .set("fail_count", failCount)
+                .set("last_run_at", LocalDateTime.now())
+                .set("status", terminal ? status : "RUNNING")
+                .eq("task_id", taskId).eq("device_id", deviceId)
+                .notIn("status", TERMINAL_STATUSES));
+        if (updated == 0) return; // 行已处于终态，忽略迟到/重复结果
         td.successCount = successCount;
         td.failCount = failCount;
-        td.lastRunAt = LocalDateTime.now();
+        td.status = terminal ? status : "RUNNING";
 
-        boolean terminal = "SUCCESS".equals(status) || "FAILED".equals(status) || "STOPPED".equals(status);
         if (terminal) {
-            td.status = status;
             TaskExecution exec = new TaskExecution();
             exec.taskId = taskId;
             exec.deviceId = deviceId;
@@ -192,26 +203,37 @@ public class TaskControlService {
             exec.successCount = successCount;
             exec.failCount = failCount;
             exec.errorMsg = str(data.get("errorMsg"));
-            exec.durationMs = data.get("duration") == null ? null
-                    : (long) (Double.parseDouble(String.valueOf(data.get("duration"))) * 1000);
+            exec.durationMs = parseDuration(data.get("duration"));
             executionMapper.insert(exec);
-        } else {
-            td.status = "RUNNING";
         }
-        taskDeviceMapper.updateById(td);
         pushTaskDeviceStatus(td);
 
         if ("FAILED".equals(status)) {
             Task task = taskMapper.selectById(taskId);
-            if (task != null && task.maxRetries != null && td.retryCount != null
-                    && td.retryCount < task.maxRetries) {
-                td.retryCount = td.retryCount + 1;
-                td.status = "PENDING";
-                taskDeviceMapper.updateById(td);
-                log.info("task {} device {} failed, retry #{}", taskId, deviceId, td.retryCount);
-                dispatchStart(task, td);
-                pushTaskDeviceStatus(td);
+            if (task != null && task.maxRetries != null) {
+                int claimed = taskDeviceMapper.update(null, new UpdateWrapper<TaskDevice>()
+                        .setSql("retry_count = retry_count + 1")
+                        .set("status", "PENDING")
+                        .eq("task_id", taskId).eq("device_id", deviceId)
+                        .eq("status", "FAILED")
+                        .apply("retry_count < {0}", task.maxRetries));
+                if (claimed > 0) {
+                    td.retryCount = (td.retryCount == null ? 0 : td.retryCount) + 1;
+                    td.status = "PENDING";
+                    log.info("task {} device {} failed, retry #{}", taskId, deviceId, td.retryCount);
+                    dispatchStart(task, td);
+                    pushTaskDeviceStatus(td);
+                }
             }
+        }
+    }
+
+    private static Long parseDuration(Object v) {
+        if (v == null) return null;
+        try {
+            return (long) (Double.parseDouble(String.valueOf(v)) * 1000);
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -238,11 +260,21 @@ public class TaskControlService {
     }
 
     private static long toLong(Object v) {
-        return v instanceof Number n ? n.longValue() : Long.parseLong(String.valueOf(v));
+        if (v instanceof Number n) return n.longValue();
+        try {
+            return Long.parseLong(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            return -1; // 非法 id 查不到对应行，自然忽略
+        }
     }
 
     private static int toInt(Object v) {
-        return v instanceof Number n ? n.intValue() : v == null ? 0 : Integer.parseInt(String.valueOf(v));
+        if (v instanceof Number n) return n.intValue();
+        try {
+            return v == null ? 0 : Integer.parseInt(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static String str(Object v) {

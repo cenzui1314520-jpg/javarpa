@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -61,20 +62,30 @@ public class ScriptController {
 
     @PostMapping("/{id}/versions")
     public R<ScriptVersion> uploadVersion(@PathVariable long id,
+                                          @RequestAttribute(value = "adminId", required = false) Long adminId,
                                           @RequestParam("file") MultipartFile file,
                                           @RequestParam("versionCode") int versionCode,
                                           @RequestParam(value = "versionName", required = false) String versionName,
                                           @RequestParam(value = "changelog", required = false) String changelog) {
         if (file == null) throw new ApiException("请选择 zip 文件");
-        return R.ok(scriptService.uploadVersion(id, file, versionCode, versionName, changelog, "admin"));
+        return R.ok(scriptService.uploadVersion(id, file, versionCode, versionName, changelog,
+                adminId == null ? "admin" : "admin#" + adminId));
     }
 
     @PostMapping("/{id}/publish")
-    public R<Void> publish(@PathVariable long id, @RequestBody Map<String, Object> body) {
-        int versionCode = Integer.parseInt(String.valueOf(body.get("versionCode")));
-        String targetType = String.valueOf(body.get("targetType"));
+    public R<Void> publish(@PathVariable long id,
+                           @RequestAttribute(value = "adminId", required = false) Long adminId,
+                           @RequestBody Map<String, Object> body) {
+        int versionCode;
+        try {
+            versionCode = Integer.parseInt(String.valueOf(body.get("versionCode")));
+        } catch (NumberFormatException e) {
+            throw new ApiException("versionCode 必须为整数");
+        }
+        String targetType = body.get("targetType") == null ? null : String.valueOf(body.get("targetType"));
         String targetValue = body.get("targetValue") == null ? null : String.valueOf(body.get("targetValue"));
-        publishService.publish(id, versionCode, targetType, targetValue, "admin");
+        publishService.publish(id, versionCode, targetType, targetValue,
+                adminId == null ? "admin" : "admin#" + adminId);
         return R.ok();
     }
 

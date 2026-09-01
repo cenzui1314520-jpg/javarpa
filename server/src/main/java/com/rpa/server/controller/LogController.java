@@ -24,6 +24,8 @@ public class LogController {
                                        @RequestParam(required = false) String level,
                                        @RequestParam(defaultValue = "1") int page,
                                        @RequestParam(defaultValue = "50") int size) {
-        return R.ok(deviceLogService.page(deviceId, taskId, level, page, size));
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 500); // 日志页默认 50，上限放宽到 500
+        return R.ok(deviceLogService.page(deviceId, taskId, level, safePage, safeSize));
     }
 }

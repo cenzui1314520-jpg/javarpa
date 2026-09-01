@@ -81,7 +81,7 @@ public class DeviceService {
         d.status = 1;
         d.online = 0;
         deviceMapper.insert(d);
-        if (groupId != null) addMember(groupId, d.id);
+        if (groupId != null && groupId > 0) addMember(groupId, d.id);
         return d;
     }
 
@@ -226,7 +226,6 @@ public class DeviceService {
         upd.online = 1;
         upd.lastActiveAt = LocalDateTime.now();
         deviceMapper.updateById(upd);
-        redisQueue.markOnline(id);
 
         Long taskId = data.get("taskId") == null ? null : num(data, "taskId").longValue();
         if (taskId != null && Boolean.TRUE.equals(data.get("running"))) {
@@ -255,7 +254,7 @@ public class DeviceService {
         }
     }
 
-    @Scheduled(fixedDelay = 30_000, initialDelay = 30_000)
+    @Scheduled(fixedDelayString = "${rpa.offline-scan-seconds:30}s", initialDelayString = "${rpa.offline-scan-seconds:30}s")
     public void scanOffline() {
         LocalDateTime deadline = LocalDateTime.now().minusSeconds(heartbeatTimeoutSeconds);
         List<Device> stale = deviceMapper.selectList(
@@ -275,7 +274,11 @@ public class DeviceService {
     private static Number num(Map<String, Object> data, String key) {
         Object v = data.get(key);
         if (v instanceof Number n) return n;
-        if (v != null) return Long.parseLong(String.valueOf(v));
-        return 0;
+        if (v == null) return 0;
+        try {
+            return Long.parseLong(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            return 0; // 字段非法不应中断心跳 ACK
+        }
     }
 }

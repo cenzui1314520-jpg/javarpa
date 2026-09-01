@@ -7,9 +7,11 @@ import com.rpa.server.entity.StatsDaily;
 import com.rpa.server.entity.Task;
 import com.rpa.server.entity.TaskDevice;
 import com.rpa.server.entity.TaskExecution;
+import com.rpa.server.entity.TaskDevice;
 import com.rpa.server.mapper.DeviceMapper;
 import com.rpa.server.mapper.ScriptMapper;
 import com.rpa.server.mapper.StatsDailyMapper;
+import com.rpa.server.mapper.TaskDeviceMapper;
 import com.rpa.server.mapper.TaskMapper;
 import com.rpa.server.mapper.TaskExecutionMapper;
 import org.slf4j.Logger;
@@ -34,14 +36,17 @@ public class StatsService {
     private final TaskMapper taskMapper;
     private final ScriptMapper scriptMapper;
     private final DeviceMapper deviceMapper;
+    private final TaskDeviceMapper taskDeviceMapper;
 
     public StatsService(StatsDailyMapper statsMapper, TaskExecutionMapper executionMapper,
-                        TaskMapper taskMapper, ScriptMapper scriptMapper, DeviceMapper deviceMapper) {
+                        TaskMapper taskMapper, ScriptMapper scriptMapper, DeviceMapper deviceMapper,
+                        TaskDeviceMapper taskDeviceMapper) {
         this.statsMapper = statsMapper;
         this.executionMapper = executionMapper;
         this.taskMapper = taskMapper;
         this.scriptMapper = scriptMapper;
         this.deviceMapper = deviceMapper;
+        this.taskDeviceMapper = taskDeviceMapper;
     }
 
     @Scheduled(cron = "0 5 1 * * ?")
@@ -95,8 +100,9 @@ public class StatsService {
         m.put("deviceOnline", deviceMapper.selectCount(
                 new QueryWrapper<Device>().eq("online", 1)));
         m.put("taskTotal", taskMapper.selectCount(null));
-        m.put("taskRunning", executionMapper.selectCount(
-                new QueryWrapper<TaskExecution>().eq("status", "RUNNING")));
+        // task_execution 只在终态落库，进行中任务数需查 task_device
+        m.put("taskRunning", taskDeviceMapper.selectCount(
+                new QueryWrapper<TaskDevice>().eq("status", "RUNNING")));
 
         LocalDate today = LocalDate.now();
         LocalDateTime start = today.atStartOfDay();

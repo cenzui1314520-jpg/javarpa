@@ -1,7 +1,6 @@
 package com.rpa.server.security;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rpa.server.common.DigestUtil;
 import com.rpa.server.entity.ApiToken;
 import com.rpa.server.mapper.ApiTokenMapper;
@@ -20,7 +19,6 @@ public class ApiTokenInterceptor implements HandlerInterceptor {
     private static final Logger log = LoggerFactory.getLogger(ApiTokenInterceptor.class);
 
     private final ApiTokenMapper apiTokenMapper;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public ApiTokenInterceptor(ApiTokenMapper apiTokenMapper) {
         this.apiTokenMapper = apiTokenMapper;

@@ -1,6 +1,5 @@
 package com.rpa.server.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rpa.server.service.DeviceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -11,7 +10,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class DeviceAuthInterceptor implements HandlerInterceptor {
     private final DeviceService deviceService;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public DeviceAuthInterceptor(DeviceService deviceService) {
         this.deviceService = deviceService;

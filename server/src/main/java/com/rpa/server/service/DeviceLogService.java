@@ -7,6 +7,7 @@ import com.rpa.server.mapper.DeviceLogMapper;
 import com.rpa.server.ws.AdminStompService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 @Service
 public class DeviceLogService {
@@ -21,13 +23,16 @@ public class DeviceLogService {
 
     private final DeviceLogMapper deviceLogMapper;
     private final AdminStompService stomp;
+    private final Executor logExecutor;
 
     @Value("${rpa.log-retention-days:30}")
     private int retentionDays;
 
-    public DeviceLogService(DeviceLogMapper deviceLogMapper, AdminStompService stomp) {
+    public DeviceLogService(DeviceLogMapper deviceLogMapper, AdminStompService stomp,
+                            @Qualifier("logExecutor") Executor logExecutor) {
         this.deviceLogMapper = deviceLogMapper;
         this.stomp = stomp;
+        this.logExecutor = logExecutor;
     }
 
     public void onDeviceLog(long deviceId, Map<String, Object> data) {
@@ -38,7 +43,7 @@ public class DeviceLogService {
 
         DeviceLog entry = new DeviceLog();
         entry.deviceId = deviceId;
-        entry.taskId = data.get("taskId") == null ? null : Long.parseLong(String.valueOf(data.get("taskId")));
+        entry.taskId = parseTaskId(data.get("taskId"));
         entry.level = data.get("level") == null ? "INFO" : String.valueOf(data.get("level"));
         entry.tag = data.get("tag") == null ? null : String.valueOf(data.get("tag"));
         entry.content = data.get("content") == null ? null : String.valueOf(data.get("content"));
@@ -46,10 +51,22 @@ public class DeviceLogService {
             entry.content = entry.content.substring(0, 2000);
         }
         entry.logTime = LocalDateTime.now();
+        // 高频日志走异步线程落库，避免拖慢 WS 消息处理
+        logExecutor.execute(() -> {
+            try {
+                deviceLogMapper.insert(entry);
+            } catch (Exception e) {
+                log.warn("save device log failed: {}", e.getMessage());
+            }
+        });
+    }
+
+    private static Long parseTaskId(Object v) {
+        if (v == null) return null;
         try {
-            deviceLogMapper.insert(entry);
-        } catch (Exception e) {
-            log.warn("save device log failed: {}", e.getMessage());
+            return Long.parseLong(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 

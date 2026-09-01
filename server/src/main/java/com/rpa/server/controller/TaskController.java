@@ -72,6 +72,7 @@ public class TaskController {
     @PostMapping("/{id}/actions")
     public R<Void> actions(@PathVariable long id, @RequestBody Map<String, String> body) {
         String action = body.get("action");
+        if (action == null) throw new com.rpa.server.common.ApiException("action 不能为空");
         switch (action) {
             case "start", "pause", "stop", "restart" -> taskControlService.controlTask(id, action);
             case "enable" -> taskService.setStatus(id, 1);

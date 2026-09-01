@@ -85,8 +85,11 @@ public class DeviceWebSocketHandler extends TextWebSocketHandler {
     private void cleanup(WebSocketSession session) {
         String deviceId = deviceId(session);
         if (deviceId != null) {
-            sessionManager.unregister(deviceId, session);
-            deviceService.markOffline(deviceId);
+            // 仅当关闭的是当前注册 session 才标记离线，防止设备重连竞态把新连接误置离线
+            boolean wasCurrent = sessionManager.unregister(deviceId, session);
+            if (wasCurrent) {
+                deviceService.markOffline(deviceId);
+            }
         }
     }
 

@@ -49,10 +49,4 @@ public class RedisQueueService {
         }
         return result;
     }
-
-    public void markOnline(long deviceId) {
-        try {
-            redis.opsForValue().set("rpa:online:" + deviceId, "1", Duration.ofMinutes(5));
-        } catch (Exception ignored) {}
-    }
 }

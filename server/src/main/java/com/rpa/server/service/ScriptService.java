@@ -7,6 +7,8 @@ import com.rpa.server.entity.Script;
 import com.rpa.server.entity.ScriptVersion;
 import com.rpa.server.mapper.ScriptMapper;
 import com.rpa.server.mapper.ScriptVersionMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,6 +24,8 @@ import java.util.zip.ZipFile;
 
 @Service
 public class ScriptService {
+    private static final Logger log = LoggerFactory.getLogger(ScriptService.class);
+
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper versionMapper;
 
@@ -61,9 +65,17 @@ public class ScriptService {
     }
 
     public void delete(long id) {
-        require(id);
+        Script s = require(id);
         scriptMapper.deleteById(id);
         versionMapper.delete(new QueryWrapper<ScriptVersion>().eq("script_id", id));
+        Path dir = scriptDir(s.pkgName);
+        try (var stream = Files.walk(dir)) {
+            stream.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try { Files.deleteIfExists(p); } catch (IOException ignored) {}
+            });
+        } catch (IOException e) {
+            log.warn("clean script dir {} failed: {}", dir, e.getMessage());
+        }
     }
 
     public List<Script> list() {
@@ -95,14 +107,12 @@ public class ScriptService {
 
         String md5 = DigestUtil.md5Hex(bytes);
         String relativePath = "/files/scripts/" + script.pkgName + "/" + versionCode + ".zip";
-        Path target = Paths.get(System.getProperty("user.dir"),
-                uploadDir.startsWith("/") ? uploadDir.substring(1) : uploadDir,
-                script.pkgName, versionCode + ".zip");
+        Path target = scriptDir(script.pkgName).resolve(versionCode + ".zip");
         try {
             Files.createDirectories(target.getParent());
             Files.write(target, bytes);
         } catch (IOException e) {
-            throw new ApiException(500, "保存脚本文件失败: " + e.getMessage());
+            throw new ApiException(500, "保存脚本文件失败");
         }
 
         ScriptVersion v = new ScriptVersion();
@@ -115,8 +125,18 @@ public class ScriptService {
         v.status = 1;
         v.changelog = changelog;
         v.createdBy = operator;
-        versionMapper.insert(v);
+        try {
+            versionMapper.insert(v);
+        } catch (Exception e) {
+            try { Files.deleteIfExists(target); } catch (IOException ignored) {} // 回滚孤儿文件
+            throw e;
+        }
         return v;
+    }
+
+    private Path scriptDir(String pkgName) {
+        return Paths.get(System.getProperty("user.dir"),
+                uploadDir.startsWith("/") ? uploadDir.substring(1) : uploadDir, pkgName);
     }
 
     /** Zip must contain root main.js + config.json, no path traversal entries. */
@@ -131,7 +151,8 @@ public class ScriptService {
                 while (entries.hasMoreElements()) {
                     ZipEntry e = entries.nextElement();
                     String name = e.getName();
-                    if (name.contains("..") || name.startsWith("/")) {
+                    // 拦截路径穿越与 Windows 盘符/反斜杠条目
+                    if (name.contains("..") || name.startsWith("/") || name.contains(":") || name.contains("\\")) {
                         throw new ApiException("非法的 zip 条目: " + name);
                     }
                     if (name.equals("main.js")) hasMain = true;
