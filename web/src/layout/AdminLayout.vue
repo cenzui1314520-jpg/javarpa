@@ -47,7 +47,7 @@
           :collapse="collapsed"
           :collapse-transition="false"
           background-color="transparent"
-          text-color="#8b94b3"
+          text-color="#a6b0cc"
           active-text-color="#ffffff"
           class="side-menu"
         >
@@ -225,6 +225,7 @@ const doChangePassword = async () => {
   gap: 10px;
   padding: 18px 16px 14px;
 }
+.aside.is-collapsed .brand { padding: 14px 0 10px; justify-content: center; }
 .brand-logo {
   width: 36px;
   height: 36px;
@@ -257,6 +258,19 @@ const doChangePassword = async () => {
   background: linear-gradient(135deg, #4f6bf5, #7b5cf0);
   box-shadow: 0 4px 10px rgba(79, 107, 245, 0.35);
 }
+
+/* 折叠态：图标水平居中（覆盖 EP tooltip 触发层导致的偏移） */
+.aside.is-collapsed .side-menu :deep(.el-menu-item) {
+  padding: 0;
+  display: flex;
+  justify-content: center;
+}
+.aside.is-collapsed .side-menu :deep(.el-menu-tooltip__trigger) {
+  display: flex;
+  justify-content: center;
+}
+.aside.is-collapsed .side-menu :deep(.el-icon) { margin: 0; }
+.aside.is-collapsed .side-menu { padding: 6px 8px; }
 
 .main {
   flex: 1;
