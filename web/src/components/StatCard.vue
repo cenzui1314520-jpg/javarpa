@@ -30,6 +30,8 @@ defineProps<{
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
+  min-height: 88px;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .stat-card:hover {
@@ -46,19 +48,28 @@ defineProps<{
   color: #fff;
   flex-shrink: 0;
 }
+.stat-body {
+  flex: 1;
+  min-width: 0;
+}
 .stat-label {
   color: #7c869c;
   font-size: 13px;
+  white-space: nowrap;
 }
 .stat-value {
   font-size: 26px;
   font-weight: 700;
   line-height: 1.3;
   color: #1e2438;
+  white-space: nowrap;
 }
 .stat-sub {
   color: #9aa3b8;
   font-size: 12px;
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

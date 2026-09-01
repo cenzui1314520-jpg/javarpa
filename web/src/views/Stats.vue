@@ -14,20 +14,12 @@
       <span style="color: #9aa3b8; font-size: 12px">默认最近 30 天</span>
     </div>
 
-    <el-row :gutter="16" style="margin-bottom: 14px">
-      <el-col :md="6">
-        <StatCard title="执行总次数" :value="totals.total" sub="区间内任务执行" :icon="VideoPlay" gradient="grad-indigo" />
-      </el-col>
-      <el-col :md="6">
-        <StatCard title="成功次数" :value="totals.success" sub="任务级成功" :icon="CircleCheck" gradient="grad-green" />
-      </el-col>
-      <el-col :md="6">
-        <StatCard title="失败次数" :value="totals.failed" sub="任务级失败" :icon="CircleClose" gradient="grad-rose" />
-      </el-col>
-      <el-col :md="6">
-        <StatCard title="综合成功率" :value="totals.rate" :sub="`业务成功 ${totals.opSuccess} · 业务失败 ${totals.opFail}`" :icon="TrendCharts" gradient="grad-orange" />
-      </el-col>
-    </el-row>
+    <div class="stat-grid">
+      <StatCard title="执行总次数" :value="totals.total" sub="区间内任务执行" :icon="VideoPlay" gradient="grad-indigo" />
+      <StatCard title="成功次数" :value="totals.success" sub="任务级成功" :icon="CircleCheck" gradient="grad-green" />
+      <StatCard title="失败次数" :value="totals.failed" sub="任务级失败" :icon="CircleClose" gradient="grad-rose" />
+      <StatCard title="综合成功率" :value="totals.rate" :sub="`业务成功 ${totals.opSuccess} · 业务失败 ${totals.opFail}`" :icon="TrendCharts" gradient="grad-orange" />
+    </div>
 
     <el-card class="table-card" shadow="never">
       <el-table :data="rows" stripe>

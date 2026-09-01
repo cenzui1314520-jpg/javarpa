@@ -116,6 +116,14 @@ html, body, #app {
 .page-toolbar .el-form-item { margin: 0; }
 .toolbar-spacer { flex: 1; }
 
+/* ===== 统计卡自适应网格（替代 el-row 断点，避免窄屏挤压） ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
 /* ===== 对话框 / 分页 ===== */
 .el-dialog { border-radius: 16px; }
 .el-dialog__title { font-weight: 600; }

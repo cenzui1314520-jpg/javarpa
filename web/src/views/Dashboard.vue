@@ -1,19 +1,11 @@
 <template>
   <div>
-    <el-row :gutter="16">
-      <el-col :xs="12" :sm="12" :md="6">
-        <StatCard title="设备总数" :value="summary.deviceTotal ?? '-'" sub="已注册设备" :icon="Monitor" gradient="grad-indigo" />
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="6">
-        <StatCard title="在线设备" :value="summary.deviceOnline ?? 0" :sub="`在线率 ${onlineRate}`" :icon="Connection" gradient="grad-cyan" />
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="6">
-        <StatCard title="今日执行" :value="summary.todayExecTotal ?? 0" :sub="`业务成功 ${summary.todayOpSuccess ?? 0} · 失败 ${summary.todayOpFail ?? 0}`" :icon="VideoPlay" gradient="grad-green" />
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="6">
-        <StatCard title="今日成功率" :value="successRate" :sub="`成功 ${summary.todaySuccess ?? 0} / 失败 ${summary.todayFailed ?? 0}`" :icon="TrendCharts" gradient="grad-orange" />
-      </el-col>
-    </el-row>
+    <div class="stat-grid">
+      <StatCard title="设备总数" :value="summary.deviceTotal ?? '-'" sub="已注册设备" :icon="Monitor" gradient="grad-indigo" />
+      <StatCard title="在线设备" :value="summary.deviceOnline ?? 0" :sub="`在线率 ${onlineRate}`" :icon="Connection" gradient="grad-cyan" />
+      <StatCard title="今日执行" :value="summary.todayExecTotal ?? 0" :sub="`业务成功 ${summary.todayOpSuccess ?? 0} · 失败 ${summary.todayOpFail ?? 0}`" :icon="VideoPlay" gradient="grad-green" />
+      <StatCard title="今日成功率" :value="successRate" :sub="`成功 ${summary.todaySuccess ?? 0} / 失败 ${summary.todayFailed ?? 0}`" :icon="TrendCharts" gradient="grad-orange" />
+    </div>
 
     <el-card class="chart-card" shadow="never">
       <template #header>
