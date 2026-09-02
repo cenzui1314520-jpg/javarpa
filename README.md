@@ -111,6 +111,7 @@ device.width; device.height; device.getInfo()
 
 - 管理接口：后台全部功能均有 REST 实现（JWT Bearer），文档见 `http://localhost:8080/swagger-ui.html`
 - 开放接口：`/open/v1/**`，请求头 `X-API-Token`（后台「API Token」页创建），提供设备/任务/脚本/统计能力
+- MCP：`tools/mcp-server/mcp-server.mjs`（零依赖 Node ≥18），让 AI 编程助手直接写脚本→部署→跑日志闭环调试，配置与用法见 `docs/mcp.md`，工作区已内置 `.vscode/mcp.json`
 
 ## 安全清单
 
