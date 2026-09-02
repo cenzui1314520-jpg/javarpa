@@ -54,6 +54,7 @@ const name = ref('')
 const load = async () => (rows.value = await listTokens())
 
 const doCreate = async () => {
+  if (!name.value.trim()) return ElMessage.warning('请填写 Token 名称')
   const data: any = await createToken({ name: name.value })
   dlg.value = false
   await load()

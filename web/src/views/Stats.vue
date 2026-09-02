@@ -64,7 +64,9 @@ const totals = computed(() => {
 const load = async () => {
   const end = new Date()
   const start = new Date(Date.now() - 29 * 86400_000)
-  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  // 本地时区格式化，避免 UTC 导致东八区"今天"少一天
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const s = range.value?.[0] || fmt(start)
   const e = range.value?.[1] || fmt(end)
   rows.value = await statsByTask(s, e)

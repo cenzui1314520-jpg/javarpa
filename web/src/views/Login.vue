@@ -43,7 +43,7 @@
             登 录
           </el-button>
         </el-form>
-        <p class="card-tip">默认账号 admin / admin123，登录后请立即修改密码</p>
+        <p class="card-tip">初始密码见服务端首次启动日志，登录后请立即修改</p>
       </el-card>
     </div>
   </div>
@@ -51,12 +51,13 @@
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import { login } from '../api'
 
 const router = useRouter()
+const route = useRoute()
 const form = reactive({ username: 'admin', password: '' })
 const loading = ref(false)
 
@@ -70,7 +71,11 @@ const doLogin = async () => {
     const data: any = await login(form)
     localStorage.setItem('token', data.token)
     localStorage.setItem('admin', JSON.stringify(data.admin))
-    router.push('/dashboard')
+    // 回到被踢出前的页面
+    const redirect = (route.query.redirect as string) || '/dashboard'
+    router.push(redirect)
+  } catch {
+    // 拦截器已提示错误
   } finally {
     loading.value = false
   }

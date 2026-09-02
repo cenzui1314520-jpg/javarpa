@@ -2,25 +2,25 @@
   <div>
     <div class="page-toolbar">
       <el-form-item>
-        <el-input v-model="query.keyword" placeholder="搜索设备编号/名称" clearable style="width: 220px" prefix-icon="Search" @keyup.enter="load" />
+        <el-input v-model="query.keyword" placeholder="搜索设备编号/名称" clearable style="width: 220px" prefix-icon="Search" @keyup.enter="search" />
       </el-form-item>
       <el-form-item>
-        <el-select v-model="query.groupId" placeholder="全部分组" clearable style="width: 150px">
+        <el-select v-model="query.groupId" placeholder="全部分组" clearable style="width: 150px" @change="search">
           <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-select v-model="query.online" placeholder="全部状态" clearable style="width: 120px">
+        <el-select v-model="query.online" placeholder="全部状态" clearable style="width: 120px" @change="search">
           <el-option label="在线" :value="1" />
           <el-option label="离线" :value="0" />
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" :icon="Search" @click="load">查询</el-button>
+        <el-button type="primary" :icon="Search" @click="search">查询</el-button>
       </el-form-item>
       <div class="toolbar-spacer" />
       <el-form-item>
-        <el-button type="primary" plain :icon="Plus" @click="dlg = true">添加设备</el-button>
+        <el-button type="primary" plain :icon="Plus" @click="openCreate">添加设备</el-button>
       </el-form-item>
     </div>
 
@@ -129,13 +129,30 @@ const cmdForm = reactive({ deviceId: 0, taskId: undefined as any, action: 'start
 
 const fmt = (t: string) => (t ? String(t).replace('T', ' ').slice(0, 19) : '-')
 
+let pageReqId = 0
 const load = async () => {
+  const reqId = ++pageReqId
   const data: any = await pageDevices(query)
-  rows.value = data.list
-  total.value = data.total
+  if (reqId !== pageReqId) return // 丢弃过期响应，防止翻页/搜索时旧数据覆盖
+  rows.value = data.list || []
+  total.value = data.total || 0
+}
+
+// 搜索/筛选入口：新条件必须回到第 1 页
+const search = () => {
+  query.page = 1
+  load()
+}
+
+const openCreate = () => {
+  form.deviceSn = ''
+  form.name = ''
+  form.groupId = undefined
+  dlg.value = true
 }
 
 const doCreate = async () => {
+  if (!form.deviceSn.trim()) return ElMessage.warning('请填写设备编号')
   const dev: any = await createDevice(form)
   dlg.value = false
   await load()
@@ -147,13 +164,21 @@ const doCreate = async () => {
 }
 
 const doReset = async (row: any) => {
-  await ElMessageBox.confirm(`确认重置设备 ${row.deviceSn} 的密钥？旧连接将被断开`, '确认')
+  try {
+    await ElMessageBox.confirm(`确认重置设备 ${row.deviceSn} 的密钥？旧连接将被断开`, '确认')
+  } catch {
+    return
+  }
   const data: any = await resetSecret(row.id)
   ElMessageBox.alert(`新密钥: ${data.secret}（仅显示一次）`, '重置成功')
 }
 
 const doDelete = async (row: any) => {
-  await ElMessageBox.confirm(`确认删除设备 ${row.deviceSn}？`, '确认', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确认删除设备 ${row.deviceSn}？`, '确认', { type: 'warning' })
+  } catch {
+    return
+  }
   await deleteDevice(row.id)
   ElMessage.success('已删除')
   load()

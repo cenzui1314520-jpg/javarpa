@@ -57,6 +57,8 @@ const form = reactive({ name: '', pkgName: '', description: '' })
 const load = async () => (rows.value = await listScripts())
 
 const doCreate = async () => {
+  if (!form.name.trim()) return ElMessage.warning('请填写脚本名')
+  if (!form.pkgName.trim()) return ElMessage.warning('请填写包名')
   await createScript(form)
   dlg.value = false
   ElMessage.success('已创建')
@@ -64,7 +66,11 @@ const doCreate = async () => {
 }
 
 const doDelete = async (row: any) => {
-  await ElMessageBox.confirm(`确认删除脚本 ${row.name} 及其全部版本？`, '确认', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确认删除脚本 ${row.name} 及其全部版本？`, '确认', { type: 'warning' })
+  } catch {
+    return
+  }
   await deleteScript(row.id)
   ElMessage.success('已删除')
   load()

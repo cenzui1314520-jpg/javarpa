@@ -127,6 +127,7 @@ const pwdForm = reactive({ oldPassword: '', newPassword: '' })
 const onCommand = (cmd: string) => {
   if (cmd === 'logout') {
     localStorage.removeItem('token')
+    localStorage.removeItem('admin') // 一并清除用户信息，避免换账号读到旧值
     disconnectStomp()
     router.push('/login')
   } else if (cmd === 'password') {

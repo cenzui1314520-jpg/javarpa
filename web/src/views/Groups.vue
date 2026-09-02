@@ -71,6 +71,7 @@ const openDlg = (row?: any) => {
 }
 
 const doSave = async () => {
+  if (!form.name.trim()) return ElMessage.warning('请填写分组名')
   if (form.id) await updateGroup(form.id, form)
   else await createGroup(form)
   dlg.value = false
@@ -79,7 +80,11 @@ const doSave = async () => {
 }
 
 const doDelete = async (row: any) => {
-  await ElMessageBox.confirm(`确认删除分组 ${row.name}？组内设备不会被删除`, '确认', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确认删除分组 ${row.name}？组内设备不会被删除`, '确认', { type: 'warning' })
+  } catch {
+    return
+  }
   await deleteGroup(row.id)
   ElMessage.success('已删除')
   load()

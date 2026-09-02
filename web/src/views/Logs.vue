@@ -55,7 +55,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { pageLogs, pageDevices } from '../api'
 import { connectStomp, subscribe, disconnectStomp } from '../ws/stomp'
 
@@ -65,38 +66,56 @@ const total = ref(0)
 const devices = ref<any[]>([])
 const live = ref(false)
 let sub: any = null
+let pageReqId = 0
 
 const fmt = (t: string) => (t ? String(t).replace('T', ' ').slice(0, 19) : '-')
 
 const load = async () => {
+  const reqId = ++pageReqId
   const data: any = await pageLogs(query)
-  rows.value = data.list
-  total.value = data.total
+  if (reqId !== pageReqId) return // 丢弃过期响应，防止翻页/筛选时旧数据覆盖
+  rows.value = data.list || []
+  total.value = data.total || 0
 }
 
-const toggleLive = async (on: boolean) => {
+const unsubscribe = () => {
   if (sub) {
     sub.unsubscribe()
     sub = null
   }
-  if (on && query.deviceId) {
-    connectStomp(() => {
-      sub = subscribe(`/topic/device/${query.deviceId}/logs`, (body: any) => {
-        rows.value.unshift({
-          id: Date.now(), deviceId: body.deviceId, taskId: body.taskId,
-          level: body.level || 'INFO', content: body.content, logTime: new Date().toISOString()
-        })
-        if (rows.value.length > 300) rows.value.pop()
-      })
-    })
-  } else if (on) {
-    rows.value.length && rows.value.unshift({ id: -1, content: '请先选择设备再开启实时日志', level: 'WARN', deviceId: '-', logTime: new Date().toISOString() })
-    live.value = false
-  }
 }
 
-import { watch } from 'vue'
-watch(live, toggleLive)
+const resubscribe = () => {
+  if (!live.value || !query.deviceId) return
+  unsubscribe()
+  sub = subscribe(`/topic/device/${query.deviceId}/logs`, (body: any) => {
+    rows.value.unshift({
+      id: Date.now(), deviceId: body.deviceId, taskId: body.taskId,
+      level: body.level || 'INFO', content: body.content, logTime: new Date().toISOString()
+    })
+    if (rows.value.length > 300) rows.value.pop()
+  })
+}
+
+watch(live, on => {
+  if (on && !query.deviceId) {
+    ElMessage.warning('请先选择设备再开启实时日志')
+    live.value = false
+    return
+  }
+  if (on) {
+    connectStomp(resubscribe)
+  } else {
+    unsubscribe()
+    disconnectStomp()
+  }
+})
+
+watch(() => query.deviceId, () => {
+  query.page = 1
+  load()
+  if (live.value) connectStomp(resubscribe) // 实时期间切换设备需重新订阅
+})
 
 onMounted(async () => {
   await load()
@@ -105,7 +124,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (sub) sub.unsubscribe()
+  unsubscribe()
   disconnectStomp()
 })
 </script>

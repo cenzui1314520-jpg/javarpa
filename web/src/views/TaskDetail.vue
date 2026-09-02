@@ -60,38 +60,61 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { taskDetail, taskAction, deviceCommand } from '../api'
 import { connectStomp, subscribe, disconnectStomp } from '../ws/stomp'
 
 const route = useRoute()
-const id = Number(route.params.id)
+const taskId = () => Number(route.params.id)
 const detail = ref<any>(null)
+let sub: any = null
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const fmt = (t: string) => (t ? String(t).replace('T', ' ').slice(0, 19) : '-')
 const statusType = (s: string) =>
   s === 'RUNNING' ? 'primary' : s === 'SUCCESS' ? 'success' : s === 'FAILED' ? 'danger' : s === 'PAUSED' ? 'warning' : 'info'
 
-const load = async () => (detail.value = await taskDetail(id))
+const load = async () => (detail.value = await taskDetail(taskId()))
+
+const loadDebounced = () => {
+  // 多设备高频推送时避免请求风暴
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(load, 500)
+}
 
 const act = async (action: string) => {
-  await taskAction(id, action)
+  await taskAction(taskId(), action)
   ElMessage.success('操作已下发')
 }
 
 const deviceCmd = async (deviceId: number, action: string) => {
-  await deviceCommand(deviceId, { taskId: id, action })
+  await deviceCommand(deviceId, { taskId: taskId(), action })
   ElMessage.success('指令已下发')
 }
 
 onMounted(() => {
   load()
   connectStomp(() => {
-    subscribe(`/topic/task/${id}/status`, () => load())
+    sub = subscribe(`/topic/task/${taskId()}/status`, loadDebounced)
   })
 })
 
-onUnmounted(() => disconnectStomp())
+// 路由参数变化时（前进/后退）组件被复用，重新加载并重订 topic
+watch(() => route.params.id, (newId, oldId) => {
+  if (!route.path.startsWith('/tasks/') || newId === oldId) return
+  if (sub) {
+    sub.unsubscribe()
+    sub = null
+  }
+  load()
+  sub = subscribe(`/topic/task/${taskId()}/status`, loadDebounced)
+})
+
+onUnmounted(() => {
+  if (sub) sub.unsubscribe()
+  if (debounceTimer) clearTimeout(debounceTimer)
+  disconnectStomp()
+})
 </script>

@@ -46,7 +46,7 @@
       <el-form label-width="100px">
         <el-form-item label="任务名"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="脚本">
-          <el-select v-model="form.scriptId" style="width: 100%">
+          <el-select v-model="form.scriptId" style="width: 100%" @change="onScriptChange">
             <el-option v-for="s in scripts" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
         </el-form-item>
@@ -86,9 +86,9 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { listTasks, createTask, updateTask, deleteTask, taskAction, listScripts, listVersions, pageDevices } from '../api'
+import { listTasks, createTask, updateTask, deleteTask, taskAction, taskDetail, listScripts, listVersions, pageDevices } from '../api'
 
 const rows = ref<any[]>([])
 const scripts = ref<any[]>([])
@@ -107,6 +107,12 @@ const loadVersions = async () => {
   else versions.value = []
 }
 
+// 切换脚本必须同步刷新版本列表，否则会把 A 的版本提交给 B
+const onScriptChange = async () => {
+  form.versionCode = undefined
+  await loadVersions()
+}
+
 const openDlg = async (row?: any) => {
   form.id = row?.id || 0
   form.name = row?.name || ''
@@ -117,11 +123,22 @@ const openDlg = async (row?: any) => {
   form.maxRetries = row?.maxRetries ?? 0
   form.paramsJson = row?.paramsJson || ''
   form.deviceIds = []
+  if (row?.id) {
+    // 编辑场景回填任务已绑定的设备
+    try {
+      const d: any = await taskDetail(row.id)
+      form.deviceIds = (d.taskDevices || []).map((td: any) => td.deviceId)
+    } catch { /* 详情加载失败不阻塞编辑 */ }
+  }
   dlg.value = true
   await loadVersions()
 }
 
 const doSave = async () => {
+  if (!form.name.trim()) return ElMessage.warning('请填写任务名')
+  if (!form.scriptId) return ElMessage.warning('请选择脚本')
+  if (form.deviceIds.length === 0) return ElMessage.warning('请选择执行设备')
+  if (form.scheduleType === 'CRON' && !form.cronExpr.trim()) return ElMessage.warning('请填写 CRON 表达式')
   const payload = {
     name: form.name, scriptId: form.scriptId, versionCode: form.versionCode || null,
     deviceIds: form.deviceIds, scheduleType: form.scheduleType, cronExpr: form.cronExpr,
@@ -135,6 +152,13 @@ const doSave = async () => {
 }
 
 const act = async (row: any, action: string) => {
+  if (action === 'stop' || action === 'restart') {
+    try {
+      await ElMessageBox.confirm(`确认对任务「${row.name}」执行${action === 'stop' ? '停止' : '重启'}？`, '确认', { type: 'warning' })
+    } catch {
+      return
+    }
+  }
   await taskAction(row.id, action)
   ElMessage.success('操作已下发')
   setTimeout(load, 500)

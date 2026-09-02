@@ -64,6 +64,7 @@ const trend = ref<any[]>([])
 const days = ref(7)
 const chartEl = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
+let trendReqId = 0
 
 const quicks = [
   { path: '/scripts', title: '上传脚本', icon: Files, gradient: 'grad-indigo' },
@@ -83,7 +84,8 @@ const successRate = computed(() =>
 )
 
 const renderChart = () => {
-  if (!chart) chart = echarts.init(chartEl.value!)
+  if (!alive.value || !chartEl.value) return // 组件已卸载则不再渲染，防止泄漏新实例
+  if (!chart) chart = echarts.init(chartEl.value)
   chart.setOption({
     tooltip: { trigger: 'axis' },
     legend: { data: ['总数', '成功', '失败'], right: 0, top: 0 },
@@ -127,21 +129,32 @@ const renderChart = () => {
 }
 
 const loadTrend = async () => {
-  trend.value = await statsTrend(days.value)
+  const reqId = ++trendReqId
+  const data = await statsTrend(days.value)
+  if (reqId !== trendReqId) return // 丢弃过期响应，防止快速切换 7/14/30 天时旧数据覆盖
+  trend.value = data
   renderChart()
 }
 
 const onResize = () => chart?.resize()
 
-onMounted(async () => {
-  summary.value = await statsSummary()
-  await loadTrend()
+onMounted(() => {
+  // 同步注册监听，避免 await 期间切走页面导致监听器泄漏
   window.addEventListener('resize', onResize)
+  ;(async () => {
+    summary.value = await statsSummary()
+    if (!alive.value) return
+    await loadTrend()
+  })().catch(() => {})
 })
 
+const alive = ref(true)
+
 onBeforeUnmount(() => {
+  alive.value = false
   window.removeEventListener('resize', onResize)
   chart?.dispose()
+  chart = null
 })
 </script>
 

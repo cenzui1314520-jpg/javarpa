@@ -96,13 +96,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listScripts, listVersions, uploadVersion, publishScript, publishRecords, listGroups } from '../api'
 
 const route = useRoute()
-const id = Number(route.params.id)
+const router = useRouter()
+const scriptId = () => Number(route.params.id)
 const script = ref<any>(null)
 const versions = ref<any[]>([])
 const records = ref<any[]>([])
@@ -115,17 +116,32 @@ const upForm = reactive({ versionCode: 1, versionName: '', changelog: '' })
 const pubForm = reactive({ versionCode: 0, targetType: 'ALL', percent: 20, groupId: undefined as any })
 
 const load = async () => {
+  const id = scriptId()
+  if (!Number.isFinite(id)) return
   const all: any[] = await listScripts()
   script.value = all.find(s => s.id === id)
+  if (!script.value) {
+    ElMessage.error('脚本不存在或已被删除')
+    router.replace('/scripts')
+    return
+  }
   versions.value = await listVersions(id)
   records.value = await publishRecords(id)
 }
+
+// 路由参数变化时（前进/后退）组件被复用，需重新加载
+watch(() => route.params.id, () => {
+  if (route.path.startsWith('/scripts/')) load()
+})
 
 const targetText = (row: any) =>
   row.targetType === 'ALL' ? '全量' : row.targetType === 'PERCENT' ? `灰度 ${row.targetValue}%` : `分组 ${row.targetValue}`
 
 const resetUpload = () => {
   upForm.versionCode = Math.max(1, (versions.value[0]?.versionCode || 0) + 1)
+  upForm.versionName = ''
+  upForm.changelog = ''
+  if (fileEl.value) fileEl.value.value = ''
 }
 
 const doUpload = async () => {
@@ -138,10 +154,12 @@ const doUpload = async () => {
   fd.append('changelog', upForm.changelog)
   uploading.value = true
   try {
-    await uploadVersion(id, fd)
+    await uploadVersion(scriptId(), fd)
     uploadDlg.value = false
     ElMessage.success('版本已上传')
     load()
+  } catch {
+    // 拦截器已提示，这里只恢复按钮状态
   } finally {
     uploading.value = false
   }
@@ -158,15 +176,21 @@ const doPublish = async () => {
       : pubForm.targetType === 'GROUP' ? String(pubForm.groupId || '')
         : null
   if (pubForm.targetType === 'GROUP' && !value) return ElMessage.warning('请选择分组')
-  await publishScript(id, { versionCode: pubForm.versionCode, targetType: pubForm.targetType, targetValue: value })
-  pubDlg.value = false
-  ElMessage.success('发布成功，在线设备将自动更新')
-  load()
+  try {
+    await publishScript(scriptId(), { versionCode: pubForm.versionCode, targetType: pubForm.targetType, targetValue: value })
+    pubDlg.value = false
+    ElMessage.success('发布成功，在线设备将自动更新')
+    load()
+  } catch { /* 拦截器已提示 */ }
 }
 
 const doRollback = async (row: any) => {
-  await ElMessageBox.confirm(`确认将稳定版本回滚到 v${row.versionCode}？（以全量方式重新发布旧版本）`, '回滚确认')
-  await publishScript(id, { versionCode: row.versionCode, targetType: 'ALL' })
+  try {
+    await ElMessageBox.confirm(`确认将稳定版本回滚到 v${row.versionCode}？（以全量方式重新发布旧版本）`, '回滚确认')
+  } catch {
+    return // 用户取消
+  }
+  await publishScript(scriptId(), { versionCode: row.versionCode, targetType: 'ALL' })
   ElMessage.success('已回滚')
   load()
 }

@@ -20,16 +20,26 @@ const router = createRouter({
         { path: 'stats', component: () => import('../views/Stats.vue'), meta: { title: '数据统计' } },
         { path: 'tokens', component: () => import('../views/Tokens.vue'), meta: { title: 'API Token' } }
       ]
-    }
+    },
+    // 404 兜底，避免渲染空白页
+    { path: '/:pathMatch(.*)*', redirect: '/dashboard' }
   ]
 })
 
 router.beforeEach((to, _from, next) => {
-  if (to.path !== '/login' && !localStorage.getItem('token')) {
+  const logged = !!localStorage.getItem('token')
+  if (to.path !== '/login' && !logged) {
     next('/login')
+  } else if (to.path === '/login' && logged) {
+    next('/dashboard')
   } else {
     next()
   }
+})
+
+router.afterEach(to => {
+  const title = (to.meta as any)?.title
+  document.title = title ? `${title} · JavaRPA` : 'JavaRPA 云端管理平台'
 })
 
 export default router
