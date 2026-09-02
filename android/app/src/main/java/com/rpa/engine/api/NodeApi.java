@@ -56,6 +56,16 @@ public class NodeApi {
     }
 
     public boolean exists() {
-        return node != null;
+        try {
+            // 对象仍持有不代表节点仍有效，refresh() 才是与窗口树重新对齐的真实探测
+            return node.refresh();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 使用完毕后释放节点（API<33 有效），长时间任务应调用避免节点池耗尽。 */
+    public void close() {
+        UiOperator.recycleNode(node);
     }
 }

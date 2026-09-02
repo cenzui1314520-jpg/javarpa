@@ -43,6 +43,9 @@ public class WsClient implements TaskExecutor.Reporter {
     // 单线程串行处理启停类指令，避免阻塞 WS 读线程（旧任务 join 最长 3s）
     private final ExecutorService dispatchExecutor = Executors.newSingleThreadExecutor(
             r -> new Thread(r, "rpa-dispatch"));
+    // 脚本包下载安装线程：有界单线程，替代每条命令裸 new Thread
+    private final ExecutorService installExecutor = Executors.newSingleThreadExecutor(
+            r -> new Thread(r, "rpa-install"));
 
     private volatile WebSocket socket;
     private volatile boolean connected;
@@ -70,7 +73,9 @@ public class WsClient implements TaskExecutor.Reporter {
         try {
             HttpUrl url = HttpUrl.parse(wsUrl);
             if (url == null) {
-                throw new IllegalArgumentException("服务器地址非法: " + server);
+                // 地址配置错误重连无意义，直接终止并提示用户修正
+                status("服务器地址非法，请检查设置: " + server);
+                return;
             }
             Request request = new Request.Builder()
                     .url(url)
@@ -88,6 +93,8 @@ public class WsClient implements TaskExecutor.Reporter {
     private final WebSocketListener listener = new WebSocketListener() {
         @Override
         public void onOpen(WebSocket webSocket, Response response) {
+            // 旧连接的迟到回调不得处理，否则会误清新连接的状态/触发多余重连
+            if (webSocket != socket) return;
             reconnectAttempts = 0;
             connected = true;
             status("已连接");
@@ -103,6 +110,7 @@ public class WsClient implements TaskExecutor.Reporter {
 
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+            if (webSocket != socket) return;
             connected = false;
             socket = null;
             status("连接断开: " + t.getMessage());
@@ -112,10 +120,16 @@ public class WsClient implements TaskExecutor.Reporter {
 
         @Override
         public void onClosed(WebSocket webSocket, int code, String reason) {
+            if (webSocket != socket) return;
             connected = false;
             socket = null;
-            status("连接关闭");
             stopHeartbeat();
+            if (code == 4001) {
+                // 协议约定：鉴权失败服务端以 4001 关闭，重连永远不可能成功
+                status("鉴权失败，请检查设备编号/密钥");
+                return;
+            }
+            status("连接关闭");
             scheduleReconnect();
         }
     };
@@ -143,7 +157,8 @@ public class WsClient implements TaskExecutor.Reporter {
                     ack(msgId, true, null);
                     break;
                 case "CMD_RESTART":
-                    taskExecutor.restart(data);
+                    // restart 含 waitIdle(5s)，与 start 一样走调度线程串行执行
+                    dispatchExecutor.execute(() -> taskExecutor.restart(payload));
                     ack(msgId, true, null);
                     break;
                 case "CMD_UPDATE_SCRIPT":
@@ -158,7 +173,7 @@ public class WsClient implements TaskExecutor.Reporter {
     }
 
     private void installScript(String msgId, JSONObject data) {
-        new Thread(() -> {
+        installExecutor.execute(() -> {
             String error = null;
             try {
                 repository.ensureInstalled(
@@ -173,7 +188,7 @@ public class WsClient implements TaskExecutor.Reporter {
                 error = e.getMessage();
             }
             ack(msgId, error == null, error);
-        }, "rpa-install").start();
+        });
     }
 
     private void sendRegister() {
@@ -192,7 +207,12 @@ public class WsClient implements TaskExecutor.Reporter {
             }
             data.put("installedVersions", installed);
             send("REGISTER", data);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            // 注册失败设备将一直是"已连接的幽灵连接"，必须可见并重连
+            android.util.Log.w("WsClient", "sendRegister failed", e);
+            status("注册失败: " + e.getMessage());
+            WebSocket s = socket;
+            if (s != null) s.close(4001, "register failed");
         }
     }
 
@@ -278,6 +298,7 @@ public class WsClient implements TaskExecutor.Reporter {
         connected = false;
         stopHeartbeat();
         dispatchExecutor.shutdownNow();
+        installExecutor.shutdownNow();
         WebSocket s = socket;
         if (s != null) {
             s.close(1000, "bye");

@@ -18,14 +18,26 @@ public class ImageApi {
     private final int width;
     private final int height;
     private final File baseDir;
+    private final com.rpa.engine.engine.RhinoScriptEngine.Host host;
 
     public ImageApi(Bitmap bitmap, File baseDir) {
+        this(bitmap, baseDir, null);
+    }
+
+    public ImageApi(Bitmap bitmap, File baseDir, com.rpa.engine.engine.RhinoScriptEngine.Host host) {
         this.width = bitmap.getWidth();
         this.height = bitmap.getHeight();
         this.pixels = new int[width * height];
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
         bitmap.recycle();
         this.baseDir = baseDir;
+        this.host = host;
+    }
+
+    /** 全屏逐像素扫描耗时可达数十秒，逐行响应停止/中断避免 CMD_STOP 失效。 */
+    private void checkStop() throws InterruptedException {
+        if (Thread.interrupted()) throw new InterruptedException("scan interrupted");
+        if (host != null && host.isStopRequested()) throw new InterruptedException("stopped");
     }
 
     public int getWidth() {
@@ -60,11 +72,12 @@ public class ImageApi {
     }
 
     /** Finds first pixel close to colorHex ("#RRGGBB") within threshold. */
-    public Map<String, Integer> findColor(String colorHex, int threshold) {
+    public Map<String, Integer> findColor(String colorHex, int threshold) throws InterruptedException {
         Integer target = parseColor(colorHex);
         if (target == null) return null;
         int tr = Color.red(target), tg = Color.green(target), tb = Color.blue(target);
         for (int y = 0; y < height; y++) {
+            checkStop();
             for (int x = 0; x < width; x++) {
                 int c = pixels[y * width + x];
                 if (Math.abs(Color.red(c) - tr) <= threshold
@@ -78,7 +91,7 @@ public class ImageApi {
     }
 
     /** Template match against an image inside the script package (e.g. "res/btn.png"). */
-    public Map<String, Integer> findImage(String relPath, int threshold) {
+    public Map<String, Integer> findImage(String relPath, int threshold) throws InterruptedException {
         Bitmap tpl;
         try {
             tpl = BitmapFactory.decodeFile(resolveInBase(relPath).getAbsolutePath());
@@ -97,6 +110,7 @@ public class ImageApi {
 
         int anchor = tp[0];
         for (int y = 0; y <= height - th; y++) {
+            checkStop();
             for (int x = 0; x <= width - tw; x++) {
                 if (!colorClose(pixels[y * width + x], anchor, threshold)) continue;
                 if (matchAt(x, y, tp, tw, th, threshold)) {

@@ -78,6 +78,11 @@ public class ScriptRepository {
                                 String baseUrl, String sn, String secret) throws IOException {
         synchronized (installLock) {
             if (verifyLocal(scriptId, versionCode, md5)) return;
+            if (md5 == null) {
+                // 协议要求携带 md5；缺失说明服务端异常，告警但保持兼容继续安装
+                android.util.Log.w("ScriptRepository",
+                        "CMD_START/CMD_UPDATE_SCRIPT 未携带 md5,跳过完整性校验: script=" + scriptId);
+            }
             byte[] zip = downloader.download(baseUrl, relativeUrl, sn, secret);
             String actual = ScriptDownloader.md5Hex(zip);
             if (md5 != null && !md5.equalsIgnoreCase(actual)) {

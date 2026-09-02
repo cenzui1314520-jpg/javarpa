@@ -19,6 +19,10 @@ import okhttp3.Response;
 /** Downloads script packages, verifies md5 and installs them in versioned dirs. */
 public class ScriptDownloader {
     private static final int TIMEOUT_MS = 30_000;
+    // 与服务端 multipart 上限对齐，防 zip bomb / 超大包打爆内存与存储
+    private static final long MAX_DOWNLOAD_BYTES = 50L * 1024 * 1024;
+    private static final int MAX_ZIP_ENTRIES = 500;
+    private static final long MAX_UNCOMPRESSED_BYTES = 200L * 1024 * 1024;
 
     private final Context context;
     private final OkHttpClient client = new OkHttpClient.Builder()
@@ -43,7 +47,21 @@ public class ScriptDownloader {
             if (!response.isSuccessful() || response.body() == null) {
                 throw new IOException("下载失败 HTTP " + response.code());
             }
-            return response.body().bytes();
+            // 流式读取并限制总量，不再整包读入后再判断
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            try (java.io.InputStream in = response.body().byteStream()) {
+                byte[] buffer = new byte[8192];
+                long total = 0;
+                int n;
+                while ((n = in.read(buffer)) > 0) {
+                    total += n;
+                    if (total > MAX_DOWNLOAD_BYTES) {
+                        throw new IOException("脚本包超过大小限制 " + (MAX_DOWNLOAD_BYTES / 1024 / 1024) + "MB");
+                    }
+                    bos.write(buffer, 0, n);
+                }
+            }
+            return bos.toByteArray();
         }
     }
 
@@ -72,7 +90,12 @@ public class ScriptDownloader {
             try (ZipInputStream zis = new ZipInputStream(new java.io.ByteArrayInputStream(zipBytes))) {
                 ZipEntry entry;
                 byte[] buffer = new byte[8192];
+                int entryCount = 0;
+                long totalBytes = 0;
                 while ((entry = zis.getNextEntry()) != null) {
+                    if (++entryCount > MAX_ZIP_ENTRIES) {
+                        throw new IOException("zip 条目数超过限制 " + MAX_ZIP_ENTRIES);
+                    }
                     File out = new File(staging, entry.getName());
                     String canonical = out.getCanonicalPath();
                     if (!canonical.startsWith(staging.getCanonicalPath() + File.separator)
@@ -87,6 +110,11 @@ public class ScriptDownloader {
                     try (FileOutputStream fos = new FileOutputStream(out)) {
                         int n;
                         while ((n = zis.read(buffer)) > 0) {
+                            totalBytes += n;
+                            if (totalBytes > MAX_UNCOMPRESSED_BYTES) {
+                                throw new IOException("解压总大小超过限制 "
+                                        + (MAX_UNCOMPRESSED_BYTES / 1024 / 1024) + "MB");
+                            }
                             fos.write(buffer, 0, n);
                         }
                     }

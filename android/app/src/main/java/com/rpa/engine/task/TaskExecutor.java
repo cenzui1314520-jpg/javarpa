@@ -58,11 +58,13 @@ public class TaskExecutor {
         final String paramsJson;
         final String url;
         final String md5;
+        final long maxRuntimeMs; // CMD_START 可选下发，0 表示不限
         final long startedAt = System.currentTimeMillis();
         final AutoApi auto = new AutoApi(this);
         volatile Thread thread;
         volatile boolean paused;
         volatile boolean stopRequested;
+        java.util.Timer watchdog; // guarded by TaskExecutor.this
 
         RunContext(JSONObject data) throws Exception {
             this.taskId = data.getLong("taskId");
@@ -71,6 +73,7 @@ public class TaskExecutor {
             this.paramsJson = data.optString("params", "{}");
             this.url = data.optString("url", "");
             this.md5 = data.optString("md5", null);
+            this.maxRuntimeMs = Math.max(0, data.optLong("maxRuntimeSec", 0)) * 1000L;
         }
 
         @Override
@@ -99,7 +102,7 @@ public class TaskExecutor {
         }
     }
 
-    public synchronized void start(JSONObject data) {
+    public void start(JSONObject data) {
         RunContext rc;
         try {
             rc = new RunContext(data);
@@ -111,15 +114,62 @@ public class TaskExecutor {
         synchronized (lastStartData) {
             lastStartData.put(rc.taskId, data);
         }
-        if (!stopCurrent(3000)) {
-            // 旧任务线程未退出，拒绝并发启动，避免两个脚本同时操作屏幕
-            sendResult(buildResult(rc.taskId, "FAILED", 0, 0,
-                    "上一任务未能停止，请稍后重试", 0));
-            return;
+        requestStopCurrent(3000);
+        synchronized (this) {
+            current = rc;
         }
-        current = rc;
         rc.thread = new Thread(() -> runScript(rc), "rpa-task-" + rc.taskId);
         rc.thread.start();
+        startWatchdog(rc);
+    }
+
+    /** 超时未退出的旧线程标记为孤儿并分离，不再阻塞新任务（孤儿靠指令观察器自灭）。 */
+    private void requestStopCurrent(long timeoutMs) {
+        RunContext rc;
+        synchronized (this) {
+            rc = current;
+            if (rc == null) return;
+            rc.stopRequested = true;
+            if (rc.thread != null) rc.thread.interrupt();
+        }
+        Thread t = rc.thread;
+        if (t != null) {
+            try {
+                t.join(timeoutMs);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        boolean exited = t == null || !t.isAlive();
+        if (!exited) {
+            android.util.Log.w("TaskExecutor",
+                    "old task " + rc.taskId + " not stopped in " + timeoutMs + "ms, detach as orphan");
+        }
+        synchronized (this) {
+            if (current == rc) current = null;
+        }
+    }
+
+    // 断网期间服务器无法下发 CMD_STOP，看门狗兜底防止脚本无限占用设备
+    private synchronized void startWatchdog(RunContext rc) {
+        if (rc.maxRuntimeMs <= 0) return;
+        stopWatchdog(rc);
+        rc.watchdog = new java.util.Timer("rpa-watchdog-" + rc.taskId);
+        rc.watchdog.schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                android.util.Log.w("TaskExecutor", "task " + rc.taskId + " exceeded max runtime, stopping");
+                rc.stopRequested = true;
+                if (rc.thread != null) rc.thread.interrupt();
+            }
+        }, rc.maxRuntimeMs);
+    }
+
+    private synchronized void stopWatchdog(RunContext rc) {
+        if (rc.watchdog != null) {
+            rc.watchdog.cancel();
+            rc.watchdog = null;
+        }
     }
 
     private void runScript(RunContext rc) {
@@ -151,7 +201,10 @@ public class TaskExecutor {
         int ok = rc.auto.getReport().getOk();
         int fail = rc.auto.getReport().getFail();
         sendResult(buildResult(rc.taskId, status, ok, fail, error, duration));
-        if (current == rc) current = null;
+        stopWatchdog(rc);
+        synchronized (this) {
+            if (current == rc) current = null;
+        }
     }
 
     private static boolean isStopInterruption(Throwable e) {
@@ -180,42 +233,22 @@ public class TaskExecutor {
 
     public void restart(JSONObject data) {
         long taskId = data.optLong("taskId", 0);
-        new Thread(() -> {
-            stop(taskId);
-            waitIdle(5000);
-            // CMD_RESTART 只携带 taskId，复用设备缓存的最近一次 CMD_START 完整参数
-            JSONObject startData = data.has("scriptId") ? data : cachedStartData(taskId);
-            if (startData == null) {
-                sendResult(buildResult(taskId, "FAILED", 0, 0,
-                        "无法重启: 设备未缓存该任务的脚本信息", 0));
-                return;
-            }
-            start(startData);
-        }, "rpa-restart").start();
+        stop(taskId);
+        waitIdle(5000);
+        // CMD_RESTART 只携带 taskId，复用设备缓存的最近一次 CMD_START 完整参数
+        JSONObject startData = data.has("scriptId") ? data : cachedStartData(taskId);
+        if (startData == null) {
+            sendResult(buildResult(taskId, "FAILED", 0, 0,
+                    "无法重启: 设备未缓存该任务的脚本信息", 0));
+            return;
+        }
+        start(startData);
     }
 
     private JSONObject cachedStartData(long taskId) {
         synchronized (lastStartData) {
             return lastStartData.get(taskId);
         }
-    }
-
-    /** @return true 表示旧任务线程已退出（或本来没有旧任务） */
-    private synchronized boolean stopCurrent(long timeoutMs) {
-        RunContext rc = current;
-        if (rc == null) return true;
-        rc.stopRequested = true;
-        if (rc.thread != null) {
-            rc.thread.interrupt();
-            try {
-                rc.thread.join(timeoutMs);
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        boolean exited = rc.thread == null || !rc.thread.isAlive();
-        if (exited) current = null;
-        return exited;
     }
 
     private void waitIdle(long timeoutMs) {
@@ -229,7 +262,8 @@ public class TaskExecutor {
         }
     }
 
-    public synchronized JSONObject snapshot() {
+    // 心跳 30s 一次，不能被 start 的 join 阻塞导致服务器误判离线
+    public JSONObject snapshot() {
         RunContext rc = current;
         JSONObject o = new JSONObject();
         try {
@@ -314,7 +348,17 @@ public class TaskExecutor {
         mainHandler.post(() -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show());
     }
 
+    /** 仅发停止信号不 join，可在主线程安全调用；线程靠观察器/中断自行退出。 */
+    public void requestStopAll() {
+        RunContext rc = current;
+        if (rc != null) {
+            rc.stopRequested = true;
+            if (rc.thread != null) rc.thread.interrupt();
+            stopWatchdog(rc);
+        }
+    }
+
     public void shutdown() {
-        stopCurrent(2000);
+        requestStopAll();
     }
 }

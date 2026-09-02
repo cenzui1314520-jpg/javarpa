@@ -69,6 +69,7 @@ public class CoreEngineService extends Service {
     @Override
     public void onDestroy() {
         if (wsClient != null) wsClient.close();
+        // 只发停止信号不在主线程 join（旧实现最长卡 2s 可致 ANR），线程靠观察器自行退出
         if (taskExecutor != null) taskExecutor.shutdown();
         super.onDestroy();
     }

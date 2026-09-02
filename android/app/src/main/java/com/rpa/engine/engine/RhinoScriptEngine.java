@@ -42,6 +42,9 @@ public class RhinoScriptEngine {
         protected void observeInstructionCount(Context cx, int instructionCount) {
             Host host = HOST.get();
             if (host != null && host.isStopRequested()) {
+                // 停止后将阈值降为 1：异常在每条指令（含进入 catch 块本身）都会抛出，
+                // 脚本层面的 try/catch 无法再吞掉停止信号持续空转
+                cx.setInstructionObserverThreshold(1);
                 throw new ScriptStopException();
             }
         }

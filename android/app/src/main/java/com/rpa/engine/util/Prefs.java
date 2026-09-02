@@ -18,14 +18,27 @@ public class Prefs {
     }
 
     public static String secret(Context ctx) {
-        return sp(ctx).getString(KEY_SECRET, "");
+        String stored = sp(ctx).getString(KEY_SECRET, "");
+        if (stored.isEmpty()) return stored;
+        if (KeystoreCrypto.isEncrypted(stored)) {
+            String plain = KeystoreCrypto.decrypt(stored);
+            return plain != null ? plain : ""; // Keystore 异常时不吐密文
+        }
+        // 历史明文：读出成功即透明升级为密文存储
+        String encrypted = KeystoreCrypto.encrypt(stored);
+        if (encrypted != null) {
+            sp(ctx).edit().putString(KEY_SECRET, encrypted).apply();
+        }
+        return stored;
     }
 
     public static void save(Context ctx, String server, String sn, String secret) {
+        // 设备唯一凭据加密落盘；Keystore 异常时降级明文保证可用
+        String stored = KeystoreCrypto.encrypt(secret);
         sp(ctx).edit()
                 .putString(KEY_SERVER, server)
                 .putString(KEY_SN, sn)
-                .putString(KEY_SECRET, secret)
+                .putString(KEY_SECRET, stored != null ? stored : secret)
                 .apply();
     }
 

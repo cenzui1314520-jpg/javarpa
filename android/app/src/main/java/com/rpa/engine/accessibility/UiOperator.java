@@ -42,11 +42,18 @@ public final class UiOperator {
             }
         }
         AccessibilityNodeInfo hit = null;
-        for (AccessibilityNodeInfo r : roots) {
-            hit = bfs(r, c);
-            if (hit != null) break;
+        int hitRootIndex = -1;
+        for (int ri = 0; ri < roots.size() && hit == null; ri++) {
+            hit = bfs(roots.get(ri), c);
+            hitRootIndex = ri;
         }
-        if (hit != null) return hit;
+        if (hit != null) {
+            // 命中：回收其余根节点；命中链路上的节点仍归调用方使用
+            for (int i = 0; i < roots.size(); i++) {
+                if (i != hitRootIndex) recycleNode(roots.get(i));
+            }
+            return hit;
+        }
         recycleAll(roots); // 未命中时释放根节点；命中节点交调用方使用后 recycle
         return null;
     }
@@ -77,10 +84,14 @@ public final class UiOperator {
         queue.addAll(roots);
         while (!queue.isEmpty()) {
             AccessibilityNodeInfo node = queue.poll();
-            if (matches(node, c)) result.add(node);
             for (int i = 0; i < node.getChildCount(); i++) {
                 AccessibilityNodeInfo child = node.getChild(i);
                 if (child != null) queue.add(child);
+            }
+            if (matches(node, c)) {
+                result.add(node);
+            } else {
+                recycleNode(node); // 未命中的中间节点即时回收
             }
         }
         return result;
@@ -96,15 +107,34 @@ public final class UiOperator {
         }
     }
 
+    /** API<33 下释放单个节点；33+ recycle 已是 no-op。 */
+    public static void recycleNode(AccessibilityNodeInfo node) {
+        if (node == null || Build.VERSION.SDK_INT >= 33) return;
+        try {
+            node.recycle();
+        } catch (Exception ignored) {
+        }
+    }
+
     private static AccessibilityNodeInfo bfs(AccessibilityNodeInfo root, Criteria c) {
         Deque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
         queue.add(root);
         while (!queue.isEmpty()) {
             AccessibilityNodeInfo node = queue.poll();
-            if (matches(node, c)) return node;
-            for (int i = 0; i < node.getChildCount(); i++) {
-                AccessibilityNodeInfo child = node.getChild(i);
-                if (child != null) queue.add(child);
+            AccessibilityNodeInfo hit = null;
+            if (matches(node, c)) {
+                hit = node;
+            } else {
+                // 未命中的节点在取完子节点后立即回收，避免长任务耗尽节点池
+                for (int i = 0; i < node.getChildCount(); i++) {
+                    AccessibilityNodeInfo child = node.getChild(i);
+                    if (child != null) queue.add(child);
+                }
+                recycleNode(node);
+            }
+            if (hit != null) {
+                recycleAll(new ArrayList<>(queue));
+                return hit;
             }
         }
         return null;
@@ -217,19 +247,15 @@ public final class UiOperator {
                                 }
                             } finally {
                                 result.getHardwareBuffer().close();
-                                try {
-                                    queue.put(soft);
-                                } catch (InterruptedException ignored) {
-                                }
+                                // 非阻塞投放：若等待方已超时返回，直接丢弃迟到结果，
+                                // 绝不能在主线程（框架回调线程）上阻塞等待消费者
+                                queue.offer(soft);
                             }
                         }
 
                         @Override
                         public void onFailure(int errorCode) {
-                            try {
-                                queue.put(null);
-                            } catch (InterruptedException ignored) {
-                            }
+                            queue.offer(null);
                         }
                     });
             // 回调异常时不让脚本线程永久挂起

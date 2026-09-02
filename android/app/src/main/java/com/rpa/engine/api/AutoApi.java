@@ -26,7 +26,7 @@ public class AutoApi {
         if (bmp == null) return null;
         File dir = baseDir != null ? baseDir
                 : new File(com.rpa.engine.App.get().getFilesDir(), "shots");
-        return new ImageApi(bmp, dir);
+        return new ImageApi(bmp, dir, host);
     }
 
     /** 读取脚本包内文本资源（如 res/words.txt），路径不得越出包目录。 */
