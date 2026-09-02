@@ -17,6 +17,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # 与 docker-compose 中 redis requirepass 保持一致；独立裸跑 redis 时置空
+      password: ${REDIS_PASSWORD:rpa_redis_dev}
   servlet:
     multipart:
       max-file-size: 50MB
@@ -34,6 +36,7 @@ mybatis-plus:
 rpa:
   jwt-secret: ${RPA_JWT_SECRET:change-me-in-production-0123456789abcdef}
   jwt-expire-hours: 24
+  cors-origins: ${RPA_CORS_ORIGINS:http://localhost:5173,http://localhost:5174}
   upload-dir: ${RPA_UPLOAD_DIR:./data/scripts}
   heartbeat-timeout-seconds: 90
   offline-scan-seconds: 30

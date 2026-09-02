@@ -37,8 +37,18 @@ public class DeviceAuthInterceptor implements HandlerInterceptor {
             response.getWriter().write("{\"code\":401,\"msg\":\"设备鉴权失败\"}");
             return false;
         }
-        Matcher m = SCRIPT_ZIP.matcher(request.getRequestURI());
-        if (m.matches()) {
+        // 用 servletPath（已解码、已剥矩阵参数）并归一化重复斜杠后再匹配；
+        // /files/scripts/** 下凡不符合 {pkg}/{version}.zip 严格形态的一律拒绝，杜绝鉴权被变体 URI 跳过
+        String path = request.getServletPath() == null ? "" : request.getServletPath();
+        path = path.replaceAll("/+", "/");
+        if (path.startsWith("/files/scripts/")) {
+            Matcher m = SCRIPT_ZIP.matcher(path);
+            if (!m.matches()) {
+                response.setStatus(403);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"code\":403,\"msg\":\"非法脚本文件路径\"}");
+                return false;
+            }
             // 灰度未发布的版本不允许任意设备遍历下载
             boolean allowed = scriptService.canDeviceDownload(device, m.group(1),
                     Integer.parseInt(m.group(2)));

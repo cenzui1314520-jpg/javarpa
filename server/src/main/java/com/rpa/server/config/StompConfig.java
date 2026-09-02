@@ -43,7 +43,10 @@ public class StompConfig implements WebSocketMessageBrokerConfigurer {
                         String token = tokenFromQuery(request);
                         if (token != null) {
                             try {
-                                attributes.put("adminId", jwtUtil.verify(token));
+                                // 与 CONNECT 帧校验同标准：旧 token（改密前签发）不得经此通道续命
+                                JwtUtil.AdminToken t = jwtUtil.verifyWithIssuedAt(token);
+                                authService.assertTokenFresh(t.adminId(), t.issuedAtMillis());
+                                attributes.put("adminId", t.adminId());
                             } catch (ApiException e) {
                                 // 无效 token 不在握手层拒绝，由 CONNECT 帧校验兜底
                             }

@@ -24,19 +24,30 @@ public class JwtUtil {
 
     public JwtUtil(@Value("${rpa.jwt-secret}") String secret,
                    @Value("${rpa.jwt-expire-hours:24}") int expireHours,
-                   @Value("${spring.profiles.active:dev}") String activeProfile) {
+                   @Value("${spring.profiles.active:}") String activeProfile) {
         if (secret == null || secret.isBlank() || KNOWN_DEFAULT_SECRETS.contains(secret)) {
-            boolean dev = activeProfile == null || activeProfile.isBlank()
-                    || activeProfile.equalsIgnoreCase("dev")
-                    || activeProfile.equalsIgnoreCase("local");
+            // 反向兜底：profile 未显式声明或非 dev/local/test 一律拒绝，防止裸 java -jar 部署时默认密钥无声放行
+            boolean dev = isDevProfile(activeProfile);
             if (!dev) {
                 throw new IllegalStateException(
-                        "检测到 JWT 密钥为默认值，生产环境必须通过环境变量 RPA_JWT_SECRET 设置强随机密钥");
+                        "检测到 JWT 密钥为默认值，必须通过环境变量 RPA_JWT_SECRET 设置强随机密钥"
+                                + "（开发环境可用 --spring.profiles.active=dev 显式豁免）");
             }
             log.warn("JWT secret 为默认值（仅限开发环境），生产环境请设置 RPA_JWT_SECRET");
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expireMillis = expireHours * 3600_000L;
+    }
+
+    private static boolean isDevProfile(String activeProfile) {
+        if (activeProfile == null || activeProfile.isBlank()) return false;
+        for (String p : activeProfile.split(",")) {
+            String t = p.trim();
+            if (t.equalsIgnoreCase("dev") || t.equalsIgnoreCase("local") || t.equalsIgnoreCase("test")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String issue(long adminId, String username) {

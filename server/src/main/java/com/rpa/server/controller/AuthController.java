@@ -21,8 +21,16 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public R<Map<String, Object>> login(@RequestBody Map<String, String> body) {
-        return R.ok(authService.login(body.get("username"), body.get("password")));
+    public R<Map<String, Object>> login(@RequestBody Map<String, String> body,
+                                        jakarta.servlet.http.HttpServletRequest request) {
+        // 防爆破按 IP+用户名双维度计数；反代场景优先取 X-Forwarded-For 首段
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip != null && !ip.isBlank()) {
+            ip = ip.split(",")[0].trim();
+        } else {
+            ip = request.getRemoteAddr();
+        }
+        return R.ok(authService.login(body.get("username"), body.get("password"), ip));
     }
 
     @PostMapping("/change-password")

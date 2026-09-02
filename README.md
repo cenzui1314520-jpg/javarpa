@@ -29,15 +29,22 @@ graph LR
 ### 1. 基础设施
 
 ```bash
-docker compose up -d   # MySQL 8 + Redis 7
+docker compose up -d   # MySQL 8 + Redis 7（仅绑定 127.0.0.1；Redis 默认密码 rpa_redis_dev）
 ```
+
+存量数据卷升级说明：Redis 加了密码，MySQL 新增应用账号 `rpa`（仅首次初始化卷时创建），
+存量卷沿用原账号即可（服务端默认 `root/root123456`，可用环境变量覆盖）。
 
 ### 2. 云端
 
 ```bash
 cd server
-mvn spring-boot:run    # 默认 8080，首次启动自动建表并创建管理员 admin/admin123
+mvn spring-boot:run -Dspring-boot.run.profiles=dev    # 默认 8080，首次启动自动建表并创建管理员 admin/admin123
 ```
+
+> 安全约束：未声明 `dev/local/test` profile 时若使用默认 JWT 密钥将**拒绝启动**。
+> 生产部署必须设置 `RPA_JWT_SECRET`（≥32 字节随机串），跨域白名单用 `RPA_CORS_ORIGINS` 覆盖，
+> Redis 密码用 `REDIS_PASSWORD`、数据库账号用 `MYSQL_USER/MYSQL_PASSWORD` 覆盖。
 
 ### 3. 管理后台
 

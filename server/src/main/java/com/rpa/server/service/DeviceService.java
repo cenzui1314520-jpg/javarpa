@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -31,6 +32,7 @@ import java.util.Map;
 public class DeviceService {
     private static final Logger log = LoggerFactory.getLogger(DeviceService.class);
 
+    private final BCryptPasswordEncoder bcrypt = new BCryptPasswordEncoder();
     private final DeviceMapper deviceMapper;
     private final DeviceGroupMapper deviceGroupMapper;
     private final DeviceGroupMemberMapper memberMapper;
@@ -67,15 +69,31 @@ public class DeviceService {
         if (device == null || device.status == null || device.status != 1) return null;
         String stored = device.secret;
         if (stored == null) return null;
-        // 新数据存 SHA-256；历史明文 secret 仍按明文比对（双轨兼容）
         boolean ok;
-        if (stored.length() == 64 && stored.chars().allMatch(c ->
+        boolean needsUpgrade;
+        if (stored.startsWith("$2")) {
+            // BCrypt（60 字符，$2a$ 前缀），列宽 64 可容纳，无需 schema 变更
+            ok = bcrypt.matches(secret, stored);
+            needsUpgrade = false;
+        } else if (stored.length() == 64 && stored.chars().allMatch(c ->
                 (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+            // 历史 SHA-256（无盐）兼容比对
             ok = MessageDigest.isEqual(stored.getBytes(), DigestUtil.sha256Hex(secret).getBytes());
+            needsUpgrade = true;
         } else {
+            // 更早期的明文 secret 兼容比对
             ok = MessageDigest.isEqual(stored.getBytes(), secret.getBytes());
+            needsUpgrade = true;
         }
-        return ok ? device : null;
+        if (!ok) return null;
+        if (needsUpgrade) {
+            // 认证成功即透明升级为 BCrypt，存量凭据逐步收敛
+            Device upd = new Device();
+            upd.id = device.id;
+            upd.secret = bcrypt.encode(secret);
+            deviceMapper.updateById(upd);
+        }
+        return device;
     }
 
     public Device create(String deviceSn, String name, Long groupId) {
@@ -87,7 +105,7 @@ public class DeviceService {
         d.name = name;
         d.groupId = groupId;
         String rawSecret = DigestUtil.randomToken(32);
-        d.secret = DigestUtil.sha256Hex(rawSecret); // 落库只存哈希
+        d.secret = bcrypt.encode(rawSecret); // 落库只存 BCrypt 哈希
         d.status = 1;
         d.online = 0;
         deviceMapper.insert(d);
@@ -101,7 +119,7 @@ public class DeviceService {
         String rawSecret = DigestUtil.randomToken(32);
         Device upd = new Device();
         upd.id = d.id;
-        upd.secret = DigestUtil.sha256Hex(rawSecret);
+        upd.secret = bcrypt.encode(rawSecret);
         deviceMapper.updateById(upd);
         sessionManager.forceClose(String.valueOf(id));
         return rawSecret;

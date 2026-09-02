@@ -17,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DeviceServiceAuthenticateTest {
@@ -93,5 +95,42 @@ class DeviceServiceAuthenticateTest {
         assertEquals(100L, created.id);
         assertNotNull(created.secret);
         assertEquals(64, DigestUtil.sha256Hex(created.secret).length());
+    }
+
+    @Test
+    void createStoresBcryptHash() {
+        when(deviceMapper.selectCount(any(QueryWrapper.class))).thenReturn(0L);
+        java.util.concurrent.atomic.AtomicReference<String> stored = new java.util.concurrent.atomic.AtomicReference<>();
+        when(deviceMapper.insert(any(Device.class))).thenAnswer(inv -> {
+            Device arg = inv.getArgument(0);
+            stored.set(arg.secret); // 落库瞬间的值（返回前会被替换为明文）
+            arg.id = 101L;
+            return 1;
+        });
+        Device created = deviceService.create("SN-003", "test", null);
+        assertEquals(101L, created.id);
+        org.junit.jupiter.api.Assertions.assertTrue(stored.get().startsWith("$2"));
+    }
+
+    @Test
+    void bcryptSecretVerifiedWithoutUpgrade() {
+        String hash = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()
+                .encode("raw-secret");
+        when(deviceMapper.selectOne(any(QueryWrapper.class))).thenReturn(deviceWithSecret(hash));
+        assertNotNull(deviceService.authenticate("SN-001", "raw-secret"));
+        assertNull(deviceService.authenticate("SN-001", "wrong"));
+        // 已是 BCrypt 不触发透明迁移写库
+        verify(deviceMapper, never()).updateById(any(Device.class));
+    }
+
+    @Test
+    void legacySecretTransparentlyUpgradedToBcrypt() {
+        when(deviceMapper.selectOne(any(QueryWrapper.class)))
+                .thenReturn(deviceWithSecret("legacy-plain-secret"));
+        assertNotNull(deviceService.authenticate("SN-001", "legacy-plain-secret"));
+        org.mockito.ArgumentCaptor<Device> captor =
+                org.mockito.ArgumentCaptor.forClass(Device.class);
+        verify(deviceMapper).updateById(captor.capture());
+        org.junit.jupiter.api.Assertions.assertTrue(captor.getValue().secret.startsWith("$2"));
     }
 }

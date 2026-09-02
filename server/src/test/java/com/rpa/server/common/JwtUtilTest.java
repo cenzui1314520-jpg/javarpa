@@ -47,7 +47,22 @@ class JwtUtilTest {
     }
 
     @Test
+    void defaultSecretRejectedWhenProfileUnset() {
+        // 裸 java -jar 部署（未声明 profile）不得放行默认密钥
+        assertThrows(IllegalStateException.class, () ->
+                new JwtUtil("change-me-in-production-0123456789abcdef", 1, ""));
+        assertThrows(IllegalStateException.class, () ->
+                new JwtUtil("change-me-in-production-0123456789abcdef", 1, null));
+    }
+
+    @Test
     void defaultSecretAllowedInDev() {
         new JwtUtil("change-me-in-production-0123456789abcdef", 1, "dev");
+    }
+
+    @Test
+    void defaultSecretAllowedInCompositeDevProfile() {
+        new JwtUtil("change-me-in-production-0123456789abcdef", 1, "dev,extra");
+        new JwtUtil("change-me-in-production-0123456789abcdef", 1, " local ");
     }
 }

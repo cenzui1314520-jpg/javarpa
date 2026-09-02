@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS admin_user (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 改密时间持久化：改密后旧 JWT 失效的判定不随服务重启丢失
+CREATE TABLE IF NOT EXISTS admin_token_state (
+    admin_id BIGINT PRIMARY KEY,
+    password_changed_at BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS api_token (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(64) NOT NULL,
