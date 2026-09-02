@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -109,23 +110,152 @@ public class ScriptService {
 
     public ScriptVersion uploadVersion(long scriptId, MultipartFile file, int versionCode,
                                        String versionName, String changelog, String operator) {
-        Script script = require(scriptId);
         if (file == null || file.isEmpty()) throw new ApiException("请上传脚本 zip 包");
-        if (versionCode <= 0) throw new ApiException("versionCode 必须为正整数");
+        try {
+            return storeVersion(scriptId, file.getBytes(), versionCode, versionName, changelog, operator);
+        } catch (IOException e) {
+            throw new ApiException(500, "读取上传文件失败");
+        }
+    }
+
+    /** 在线编辑创建新版本：files 每项 {name, content(UTF-8 文本)}，versionCode 为空自动递增。
+     *  baseVersionCode 指定基准版本时，其包内二进制文件原样保留，文本文件以本次提交为准（可删减）。 */
+    public ScriptVersion uploadVersionFromFiles(long scriptId, List<Map<String, String>> files,
+                                                Integer baseVersionCode, Integer versionCode,
+                                                String versionName, String changelog, String operator) {
+        if (files == null || files.isEmpty()) throw new ApiException("文件列表不能为空");
+        boolean hasMain = false, hasConfig = false;
+        for (Map<String, String> f : files) {
+            String name = f.get("name");
+            String content = f.get("content");
+            if (name == null || name.isBlank()) throw new ApiException("文件名不能为空");
+            if (name.contains("..") || name.startsWith("/") || name.contains(":") || name.indexOf(92) >= 0
+                    || name.startsWith("./") || name.contains("//")) {
+                throw new ApiException("非法文件名: " + name);
+            }
+            if (content == null) content = "";
+            if (content.length() > 10 * 1024 * 1024) throw new ApiException("文件过大: " + name);
+            if (name.equals("main.js")) hasMain = true;
+            if (name.equals("config.json")) hasConfig = true;
+        }
+        if (!hasMain) throw new ApiException("缺少 main.js");
+        if (!hasConfig) throw new ApiException("缺少 config.json");
+        String cfg = files.stream().filter(f -> "config.json".equals(f.get("name")))
+                .findFirst().orElseThrow().get("content");
+        try {
+            new com.fasterxml.jackson.databind.ObjectMapper().readTree(cfg);
+        } catch (Exception e) {
+            throw new ApiException("config.json 不是合法 JSON: " + e.getMessage());
+        }
+        byte[] zip = buildZip(scriptId, baseVersionCode, files);
+        return storeVersion(scriptId, zip, versionCode, versionName, changelog, operator);
+    }
+
+    /** 读取某版本 zip 内文件列表；文本文件返回内容，二进制仅返回元信息。 */
+    public List<Map<String, Object>> readVersionFiles(long scriptId, int versionCode) {
+        Script script = require(scriptId);
+        ScriptVersion v = findVersion(scriptId, versionCode);
+        if (v == null) throw new ApiException(404, "版本不存在: v" + versionCode);
+        Path zipPath = scriptDir(script.pkgName).resolve(versionCode + ".zip");
+        if (!Files.exists(zipPath)) throw new ApiException(500, "脚本包文件缺失: " + zipPath);
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        try (ZipFile zip = new ZipFile(zipPath.toFile())) {
+            Enumeration<? extends ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry e = entries.nextElement();
+                if (e.isDirectory()) continue;
+                byte[] bytes = zip.getInputStream(e).readAllBytes();
+                Map<String, Object> m = new java.util.HashMap<>();
+                m.put("name", e.getName());
+                m.put("size", bytes.length);
+                if (isTextFile(e.getName(), bytes)) {
+                    m.put("text", true);
+                    m.put("content", new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+                } else {
+                    m.put("text", false);
+                }
+                result.add(m);
+            }
+        } catch (IOException e) {
+            throw new ApiException(500, "脚本包读取失败: " + e.getMessage());
+        }
+        result.sort(java.util.Comparator.comparing(m -> String.valueOf(m.get("name"))));
+        return result;
+    }
+
+    private static final java.util.Set<String> TEXT_EXTS = java.util.Set.of(
+            "js", "json", "txt", "md", "csv", "xml", "html", "htm", "css", "yml", "yaml", "properties", "log");
+
+    private boolean isTextFile(String name, byte[] bytes) {
+        String n = name.toLowerCase();
+        int dot = n.lastIndexOf('.');
+        String ext = dot < 0 ? "" : n.substring(dot + 1);
+        if (!TEXT_EXTS.contains(ext)) return false;
+        try {
+            java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(bytes));
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private byte[] buildZip(long scriptId, Integer baseVersionCode, List<Map<String, String>> files) {
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
+            // 基准版本的二进制文件原样保留（编辑器无法编辑，也不应丢失）
+            if (baseVersionCode != null) {
+                Script script = require(scriptId);
+                ScriptVersion base = findVersion(scriptId, baseVersionCode);
+                if (base == null) throw new ApiException(404, "基准版本不存在: v" + baseVersionCode);
+                Path baseZip = scriptDir(script.pkgName).resolve(baseVersionCode + ".zip");
+                if (!Files.exists(baseZip)) throw new ApiException(500, "基准脚本包文件缺失");
+                try (ZipFile zip = new ZipFile(baseZip.toFile())) {
+                    Enumeration<? extends ZipEntry> entries = zip.entries();
+                    while (entries.hasMoreElements()) {
+                        ZipEntry e = entries.nextElement();
+                        if (e.isDirectory() || isTextFile(e.getName(), zip.getInputStream(e).readAllBytes())) continue;
+                        zos.putNextEntry(new ZipEntry(e.getName()));
+                        zip.getInputStream(e).transferTo(zos);
+                        zos.closeEntry();
+                    }
+                }
+            }
+            for (Map<String, String> f : files) {
+                zos.putNextEntry(new ZipEntry(f.get("name")));
+                String content = f.get("content") == null ? "" : f.get("content");
+                zos.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zos.closeEntry();
+            }
+        } catch (IOException e) {
+            throw new ApiException(500, "打包失败: " + e.getMessage());
+        }
+        return baos.toByteArray();
+    }
+
+    /** zip 字节落库为新版本；versionCode 为空时自动取最大版本 +1。 */
+    private ScriptVersion storeVersion(long scriptId, byte[] zipBytes, Integer versionCode,
+                                       String versionName, String changelog, String operator) {
+        Script script = require(scriptId);
+        int vc = versionCode == null
+                ? versionMapper.selectList(new QueryWrapper<ScriptVersion>().eq("script_id", scriptId))
+                        .stream().mapToInt(x -> x.versionCode).max().orElse(0) + 1
+                : versionCode;
+        if (vc <= 0) throw new ApiException("versionCode 必须为正整数");
         Long exists = versionMapper.selectCount(new QueryWrapper<ScriptVersion>()
-                .eq("script_id", scriptId).eq("version_code", versionCode));
+                .eq("script_id", scriptId).eq("version_code", vc));
         if (exists > 0) throw new ApiException("该版本号已存在");
 
-        String relativePath = "/files/scripts/" + script.pkgName + "/" + versionCode + ".zip";
-        Path target = scriptDir(script.pkgName).resolve(versionCode + ".zip");
+        String relativePath = "/files/scripts/" + script.pkgName + "/" + vc + ".zip";
+        Path target = scriptDir(script.pkgName).resolve(vc + ".zip");
         // 流式落盘到临时文件，避免整包读入堆内存；并发上传同版本时各自写独立 tmp 互不覆盖
         Path tmp = null;
         try {
             Files.createDirectories(target.getParent());
-            tmp = Files.createTempFile(target.getParent(), versionCode + ".zip.", ".part");
-            try (java.io.InputStream in = file.getInputStream()) {
-                Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
+            tmp = Files.createTempFile(target.getParent(), vc + ".zip.", ".part");
+            Files.write(tmp, zipBytes);
             long size = Files.size(tmp);
             if (size <= 0) throw new ApiException("上传内容为空");
             String md5 = DigestUtil.md5Hex(tmp);
@@ -133,7 +263,7 @@ public class ScriptService {
 
             ScriptVersion v = new ScriptVersion();
             v.scriptId = scriptId;
-            v.versionCode = versionCode;
+            v.versionCode = vc;
             v.versionName = versionName;
             v.filePath = relativePath;
             v.fileMd5 = md5;

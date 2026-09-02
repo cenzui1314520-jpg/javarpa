@@ -72,6 +72,28 @@ public class ScriptController {
                 adminId == null ? "admin" : "admin#" + adminId));
     }
 
+    /** 在线编辑保存：files=[{name,content}]，versionCode 缺省自动递增；
+     *  baseVersionCode 指定基准版本，其二进制资源原样保留。 */
+    @PostMapping("/{id}/versions/editor")
+    public R<ScriptVersion> uploadFromEditor(@PathVariable long id,
+                                             @RequestAttribute(value = "adminId", required = false) Long adminId,
+                                             @RequestBody EditorSaveReq req) {
+        return R.ok(scriptService.uploadVersionFromFiles(id, req.files(), req.baseVersionCode(),
+                req.versionCode(), req.versionName(), req.changelog(),
+                adminId == null ? "admin" : "admin#" + adminId));
+    }
+
+    /** 读取某版本包内文件（文本返回内容，二进制仅元信息），供在线编辑器加载。 */
+    @GetMapping("/{id}/versions/{versionCode}/files")
+    public R<List<Map<String, Object>>> versionFiles(@PathVariable long id,
+                                                     @PathVariable int versionCode) {
+        return R.ok(scriptService.readVersionFiles(id, versionCode));
+    }
+
+    public record EditorSaveReq(Integer versionCode, String versionName, String changelog,
+                                Integer baseVersionCode, List<Map<String, String>> files) {
+    }
+
     @PostMapping("/{id}/publish")
     public R<Void> publish(@PathVariable long id,
                            @RequestAttribute(value = "adminId", required = false) Long adminId,

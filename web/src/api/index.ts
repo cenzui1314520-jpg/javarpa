@@ -77,6 +77,10 @@ export const uploadVersion = (id: any, form: FormData) =>
   })
 export const publishScript = (id: any, data: any) => http.post(`/scripts/${id}/publish`, data)
 export const publishRecords = (id: any) => http.get<any>(`/scripts/${id}/publish-records`)
+export const getVersionFiles = (id: any, versionCode: number) =>
+  http.get<any[]>(`/scripts/${id}/versions/${versionCode}/files`)
+export const uploadVersionEditor = (id: any, data: any) =>
+  http.post<any>(`/scripts/${id}/versions/editor`, data, { timeout: 60000 })
 
 // tasks
 export const listTasks = () => http.get<any>('/tasks')
