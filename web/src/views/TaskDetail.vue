@@ -76,7 +76,15 @@ const fmt = (t: string) => (t ? String(t).replace('T', ' ').slice(0, 19) : '-')
 const statusType = (s: string) =>
   s === 'RUNNING' ? 'primary' : s === 'SUCCESS' ? 'success' : s === 'FAILED' ? 'danger' : s === 'PAUSED' ? 'warning' : 'info'
 
-const load = async () => (detail.value = await taskDetail(taskId()))
+let reqId = 0
+const load = async () => {
+  const id = taskId()
+  const current = ++reqId
+  const d = await taskDetail(id)
+  // 组件复用快速切换任务时丢弃过期响应，防止旧任务数据覆盖新任务
+  if (current !== reqId || id !== taskId()) return
+  detail.value = d
+}
 
 const loadDebounced = () => {
   // 多设备高频推送时避免请求风暴

@@ -2,19 +2,19 @@
   <div>
     <div class="page-toolbar">
       <el-form-item>
-        <el-select v-model="query.deviceId" placeholder="全部设备" clearable filterable style="width: 220px">
+        <el-select v-model="query.deviceId" placeholder="全部设备" clearable filterable style="width: 220px" :disabled="live">
           <el-option v-for="d in devices" :key="d.id" :label="`${d.deviceSn} ${d.name || ''}`" :value="d.id" />
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-select v-model="query.level" placeholder="全部级别" clearable style="width: 120px">
+        <el-select v-model="query.level" placeholder="全部级别" clearable style="width: 120px" :disabled="live" @change="search">
           <el-option label="INFO" value="INFO" />
           <el-option label="WARN" value="WARN" />
           <el-option label="ERROR" value="ERROR" />
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" @click="load">查询</el-button>
+        <el-button type="primary" :disabled="live" @click="search">查询</el-button>
       </el-form-item>
       <div class="toolbar-spacer" />
       <el-form-item>
@@ -48,6 +48,7 @@
         :total="total"
         :page-size="query.size"
         v-model:current-page="query.page"
+        :disabled="live"
         @current-change="load"
       />
     </div>
@@ -57,7 +58,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { pageLogs, pageDevices } from '../api'
+import { pageLogs, deviceOptions } from '../api'
 import { connectStomp, subscribe, disconnectStomp } from '../ws/stomp'
 
 const query = reactive({ deviceId: undefined as any, level: '', page: 1, size: 50 })
@@ -69,6 +70,12 @@ let sub: any = null
 let pageReqId = 0
 
 const fmt = (t: string) => (t ? String(t).replace('T', ' ').slice(0, 19) : '-')
+
+// 任何新查询条件都回到第 1 页，避免停留在超界空页误判"无数据"
+const search = () => {
+  query.page = 1
+  load()
+}
 
 const load = async () => {
   const reqId = ++pageReqId
@@ -119,8 +126,7 @@ watch(() => query.deviceId, () => {
 
 onMounted(async () => {
   await load()
-  const page: any = await pageDevices({ page: 1, size: 500 })
-  devices.value = page.list
+  devices.value = await deviceOptions()
 })
 
 onUnmounted(() => {

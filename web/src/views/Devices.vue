@@ -2,7 +2,7 @@
   <div>
     <div class="page-toolbar">
       <el-form-item>
-        <el-input v-model="query.keyword" placeholder="搜索设备编号/名称" clearable style="width: 220px" prefix-icon="Search" @keyup.enter="search" />
+        <el-input v-model="query.keyword" placeholder="搜索设备编号/名称" clearable style="width: 220px" :prefix-icon="Search" @keyup.enter="search" />
       </el-form-item>
       <el-form-item>
         <el-select v-model="query.groupId" placeholder="全部分组" clearable style="width: 150px" @change="search">
@@ -83,7 +83,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
-        <el-button type="primary" @click="doCreate">创建</el-button>
+        <el-button type="primary" :loading="submitting" @click="doCreate">创建</el-button>
       </template>
     </el-dialog>
 
@@ -126,6 +126,7 @@ const dlg = ref(false)
 const form = reactive({ deviceSn: '', name: '', groupId: undefined as any })
 const cmdDlg = ref(false)
 const cmdForm = reactive({ deviceId: 0, taskId: undefined as any, action: 'start' })
+const submitting = ref(false)
 
 const fmt = (t: string) => (t ? String(t).replace('T', ' ').slice(0, 19) : '-')
 
@@ -153,14 +154,24 @@ const openCreate = () => {
 
 const doCreate = async () => {
   if (!form.deviceSn.trim()) return ElMessage.warning('请填写设备编号')
-  const dev: any = await createDevice(form)
+  if (submitting.value) return
+  submitting.value = true
+  let dev: any
+  try {
+    dev = await createDevice(form)
+  } finally {
+    submitting.value = false
+  }
   dlg.value = false
-  await load()
-  ElMessageBox.alert(
-    `设备创建成功。设备编号: ${dev.deviceSn}，密钥: ${dev.secret}（仅显示一次，请妥善保存）`,
-    '设备密钥',
-    { confirmButtonText: '已保存' }
-  )
+  // 一次性密钥先展示再做任何可能失败的请求
+  try {
+    await ElMessageBox.alert(
+      `设备创建成功。设备编号: ${dev.deviceSn}，密钥: ${dev.secret}（仅显示一次，请妥善保存）`,
+      '设备密钥',
+      { confirmButtonText: '已保存' }
+    )
+  } catch { /* 用户关闭弹窗 */ }
+  load()
 }
 
 const doReset = async (row: any) => {
@@ -170,7 +181,9 @@ const doReset = async (row: any) => {
     return
   }
   const data: any = await resetSecret(row.id)
-  ElMessageBox.alert(`新密钥: ${data.secret}（仅显示一次）`, '重置成功')
+  try {
+    await ElMessageBox.alert(`新密钥: ${data.secret}（仅显示一次）`, '重置成功')
+  } catch { /* 用户关闭弹窗 */ }
 }
 
 const doDelete = async (row: any) => {
@@ -181,6 +194,8 @@ const doDelete = async (row: any) => {
   }
   await deleteDevice(row.id)
   ElMessage.success('已删除')
+  // 删除的是当前页最后一条时回退一页，避免停留在超界空页
+  if (rows.value.length === 1 && query.page > 1) query.page--
   load()
 }
 

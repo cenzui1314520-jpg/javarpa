@@ -35,7 +35,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
-        <el-button type="primary" @click="doCreate">创建</el-button>
+        <el-button type="primary" :loading="submitting" @click="doCreate">创建</el-button>
       </template>
     </el-dialog>
   </div>
@@ -50,18 +50,29 @@ import { listTokens, createToken, setTokenStatus } from '../api'
 const rows = ref<any[]>([])
 const dlg = ref(false)
 const name = ref('')
+const submitting = ref(false)
 
 const load = async () => (rows.value = await listTokens())
 
 const doCreate = async () => {
   if (!name.value.trim()) return ElMessage.warning('请填写 Token 名称')
-  const data: any = await createToken({ name: name.value })
+  if (submitting.value) return
+  submitting.value = true
+  let data: any
+  try {
+    data = await createToken({ name: name.value })
+  } finally {
+    submitting.value = false
+  }
   dlg.value = false
-  await load()
-  ElMessageBox.alert(
-    `Token: ${data.token}（仅显示一次，调用开放接口时放入请求头 X-API-Token）`,
-    '创建成功'
-  )
+  // 一次性明文必须先于任何可能失败的请求展示，否则刷新失败就永远拿不到了
+  try {
+    await ElMessageBox.alert(
+      `Token: ${data.token}（仅显示一次，调用开放接口时放入请求头 X-API-Token）`,
+      '创建成功'
+    )
+  } catch { /* 用户关闭弹窗 */ }
+  load()
 }
 
 const toggle = async (row: any) => {

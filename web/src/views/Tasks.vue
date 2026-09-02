@@ -78,7 +78,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
-        <el-button type="primary" @click="doSave">保存</el-button>
+        <el-button type="primary" :loading="submitting" @click="doSave">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -88,7 +88,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { listTasks, createTask, updateTask, deleteTask, taskAction, taskDetail, listScripts, listVersions, pageDevices } from '../api'
+import { listTasks, createTask, updateTask, deleteTask, taskAction, taskDetail, listScripts, listVersions, deviceOptions } from '../api'
 
 const rows = ref<any[]>([])
 const scripts = ref<any[]>([])
@@ -123,32 +123,46 @@ const openDlg = async (row?: any) => {
   form.maxRetries = row?.maxRetries ?? 0
   form.paramsJson = row?.paramsJson || ''
   form.deviceIds = []
+  detailLoaded.value = !row?.id
   if (row?.id) {
-    // 编辑场景回填任务已绑定的设备
+    // 编辑场景回填任务已绑定的设备；加载失败必须中止，否则空列表保存会清空全部绑定
     try {
       const d: any = await taskDetail(row.id)
       form.deviceIds = (d.taskDevices || []).map((td: any) => td.deviceId)
-    } catch { /* 详情加载失败不阻塞编辑 */ }
+      detailLoaded.value = true
+    } catch {
+      ElMessage.error('任务详情加载失败，无法编辑，请重试')
+      return
+    }
   }
   dlg.value = true
   await loadVersions()
 }
 
+const submitting = ref(false)
+const detailLoaded = ref(true)
+
 const doSave = async () => {
   if (!form.name.trim()) return ElMessage.warning('请填写任务名')
   if (!form.scriptId) return ElMessage.warning('请选择脚本')
-  if (form.deviceIds.length === 0) return ElMessage.warning('请选择执行设备')
+  if (!form.deviceIds.length) return ElMessage.warning('请选择执行设备')
+  if (!detailLoaded.value) return ElMessage.error('设备绑定信息未加载完成，请关闭后重试')
   if (form.scheduleType === 'CRON' && !form.cronExpr.trim()) return ElMessage.warning('请填写 CRON 表达式')
-  const payload = {
-    name: form.name, scriptId: form.scriptId, versionCode: form.versionCode || null,
-    deviceIds: form.deviceIds, scheduleType: form.scheduleType, cronExpr: form.cronExpr,
-    maxRetries: form.maxRetries, paramsJson: form.paramsJson || null
+  submitting.value = true
+  try {
+    const payload = {
+      name: form.name, scriptId: form.scriptId, versionCode: form.versionCode || null,
+      deviceIds: form.deviceIds, scheduleType: form.scheduleType, cronExpr: form.cronExpr,
+      maxRetries: form.maxRetries, paramsJson: form.paramsJson || null
+    }
+    if (form.id) await updateTask(form.id, payload)
+    else await createTask(payload)
+    dlg.value = false
+    ElMessage.success('已保存')
+    load()
+  } finally {
+    submitting.value = false
   }
-  if (form.id) await updateTask(form.id, payload)
-  else await createTask(payload)
-  dlg.value = false
-  ElMessage.success('已保存')
-  load()
 }
 
 const act = async (row: any, action: string) => {
@@ -161,13 +175,12 @@ const act = async (row: any, action: string) => {
   }
   await taskAction(row.id, action)
   ElMessage.success('操作已下发')
-  setTimeout(load, 500)
+  load()
 }
 
 onMounted(async () => {
   await load()
   scripts.value = await listScripts()
-  const page: any = await pageDevices({ page: 1, size: 500 })
-  devices.value = page.list
+  devices.value = await deviceOptions()
 })
 </script>

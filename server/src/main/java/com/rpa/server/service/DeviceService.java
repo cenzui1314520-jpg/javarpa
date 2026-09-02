@@ -190,6 +190,20 @@ public class DeviceService {
         return d;
     }
 
+    /** 选择器用精简字段，避免带上 secret 等敏感/冗余数据。 */
+    public List<Map<String, Object>> options() {
+        return deviceMapper.selectList(new QueryWrapper<Device>()
+                        .orderByDesc("id"))
+                .stream().map(d -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("id", d.id);
+                    m.put("deviceSn", d.deviceSn);
+                    m.put("name", d.name);
+                    m.put("online", d.online);
+                    return m;
+                }).toList();
+    }
+
     private Map<Long, String> groupNames() {
         Map<Long, String> map = new HashMap<>();
         deviceGroupMapper.selectList(null).forEach(g -> map.put(g.id, g.name));

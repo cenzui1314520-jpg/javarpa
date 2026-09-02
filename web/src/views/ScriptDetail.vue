@@ -89,7 +89,7 @@
       </el-form>
       <template #footer>
         <el-button @click="pubDlg = false">取消</el-button>
-        <el-button type="primary" @click="doPublish">发布</el-button>
+        <el-button type="primary" :loading="pubSubmitting" @click="doPublish">发布</el-button>
       </template>
     </el-dialog>
   </div>
@@ -114,6 +114,7 @@ const uploading = ref(false)
 const fileEl = ref<HTMLInputElement>()
 const upForm = reactive({ versionCode: 1, versionName: '', changelog: '' })
 const pubForm = reactive({ versionCode: 0, targetType: 'ALL', percent: 20, groupId: undefined as any })
+const pubSubmitting = ref(false)
 
 const load = async () => {
   const id = scriptId()
@@ -176,12 +177,16 @@ const doPublish = async () => {
       : pubForm.targetType === 'GROUP' ? String(pubForm.groupId || '')
         : null
   if (pubForm.targetType === 'GROUP' && !value) return ElMessage.warning('请选择分组')
+  if (pubSubmitting.value) return
+  pubSubmitting.value = true
   try {
     await publishScript(scriptId(), { versionCode: pubForm.versionCode, targetType: pubForm.targetType, targetValue: value })
     pubDlg.value = false
     ElMessage.success('发布成功，在线设备将自动更新')
     load()
-  } catch { /* 拦截器已提示 */ }
+  } catch { /* 拦截器已提示 */ } finally {
+    pubSubmitting.value = false
+  }
 }
 
 const doRollback = async (row: any) => {
@@ -190,9 +195,15 @@ const doRollback = async (row: any) => {
   } catch {
     return // 用户取消
   }
-  await publishScript(scriptId(), { versionCode: row.versionCode, targetType: 'ALL' })
-  ElMessage.success('已回滚')
-  load()
+  if (pubSubmitting.value) return
+  pubSubmitting.value = true
+  try {
+    await publishScript(scriptId(), { versionCode: row.versionCode, targetType: 'ALL' })
+    ElMessage.success('已回滚')
+    load()
+  } finally {
+    pubSubmitting.value = false
+  }
 }
 
 onMounted(async () => {

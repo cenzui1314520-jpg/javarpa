@@ -5,6 +5,7 @@ import com.rpa.server.entity.Device;
 import com.rpa.server.service.DeviceService;
 import com.rpa.server.service.TaskControlService;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -36,6 +37,12 @@ public class DeviceController {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 200);
         return R.ok(deviceService.page(keyword, groupId, online, safePage, safeSize));
+    }
+
+    /** 不分页精简列表，供任务/分组/日志等选择器使用，避免分页上限截断。 */
+    @GetMapping("/options")
+    public R<java.util.List<Map<String, Object>>> options() {
+        return R.ok(deviceService.options());
     }
 
     @PostMapping

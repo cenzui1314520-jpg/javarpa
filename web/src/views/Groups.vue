@@ -29,7 +29,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
-        <el-button type="primary" @click="doSave">保存</el-button>
+        <el-button type="primary" :loading="submitting" @click="doSave">保存</el-button>
       </template>
     </el-dialog>
 
@@ -41,7 +41,7 @@
       </el-checkbox-group>
       <template #footer>
         <el-button @click="memberDlg = false">取消</el-button>
-        <el-button type="primary" @click="doSaveMembers">保存</el-button>
+        <el-button type="primary" :loading="submitting" @click="doSaveMembers">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -51,7 +51,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { listGroups, createGroup, updateGroup, deleteGroup, setGroupMembers, pageDevices, groupDevices } from '../api'
+import { listGroups, createGroup, updateGroup, deleteGroup, setGroupMembers, deviceOptions, groupDevices } from '../api'
 
 const rows = ref<any[]>([])
 const devices = ref<any[]>([])
@@ -60,6 +60,7 @@ const memberDlg = ref(false)
 const current = ref<any>(null)
 const selected = ref<number[]>([])
 const form = reactive({ id: 0, name: '', remark: '' })
+const submitting = ref(false)
 
 const load = async () => (rows.value = await listGroups())
 
@@ -72,11 +73,17 @@ const openDlg = (row?: any) => {
 
 const doSave = async () => {
   if (!form.name.trim()) return ElMessage.warning('请填写分组名')
-  if (form.id) await updateGroup(form.id, form)
-  else await createGroup(form)
-  dlg.value = false
-  ElMessage.success('已保存')
-  load()
+  if (submitting.value) return
+  submitting.value = true
+  try {
+    if (form.id) await updateGroup(form.id, form)
+    else await createGroup(form)
+    dlg.value = false
+    ElMessage.success('已保存')
+    load()
+  } finally {
+    submitting.value = false
+  }
 }
 
 const doDelete = async (row: any) => {
@@ -92,18 +99,23 @@ const doDelete = async (row: any) => {
 
 const openMembers = async (row: any) => {
   current.value = row
-  const page: any = await pageDevices({ page: 1, size: 500 })
-  devices.value = page.list
+  devices.value = await deviceOptions()
   const inGroup: any = await groupDevices(row.id)
   selected.value = inGroup.map((d: any) => d.id)
   memberDlg.value = true
 }
 
 const doSaveMembers = async () => {
-  await setGroupMembers(current.value.id, selected.value)
-  memberDlg.value = false
-  ElMessage.success('已保存')
-  load()
+  if (submitting.value) return
+  submitting.value = true
+  try {
+    await setGroupMembers(current.value.id, selected.value)
+    memberDlg.value = false
+    ElMessage.success('已保存')
+    load()
+  } finally {
+    submitting.value = false
+  }
 }
 
 onMounted(load)

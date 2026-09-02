@@ -71,8 +71,9 @@ const doLogin = async () => {
     const data: any = await login(form)
     localStorage.setItem('token', data.token)
     localStorage.setItem('admin', JSON.stringify(data.admin))
-    // 回到被踢出前的页面
-    const redirect = (route.query.redirect as string) || '/dashboard'
+    // 回到被踢出前的页面；仅接受站内路径，防 //evil.com 形式的开放重定向
+    const raw = (route.query.redirect as string) || '/dashboard'
+    const redirect = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/dashboard'
     router.push(redirect)
   } catch {
     // 拦截器已提示错误

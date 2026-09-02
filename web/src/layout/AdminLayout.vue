@@ -42,7 +42,7 @@
         </div>
 
         <el-menu
-          :default-active="$route.path"
+          :default-active="activeMenu"
           router
           :collapse="collapsed"
           :collapse-transition="false"
@@ -74,7 +74,7 @@
       </el-form>
       <template #footer>
         <el-button @click="pwdDlg = false">取消</el-button>
-        <el-button type="primary" @click="doChangePassword">确认修改</el-button>
+        <el-button type="primary" :loading="pwdSubmitting" @click="doChangePassword">确认修改</el-button>
       </template>
     </el-dialog>
   </div>
@@ -120,9 +120,12 @@ const breadcrumbParent = computed(() =>
   route.path.includes('/scripts/') ? { path: '/scripts', title: '脚本管理' } : { path: '/tasks', title: '任务管理' }
 )
 const isDetail = computed(() => route.path.includes('/scripts/') || route.path.includes('/tasks/'))
+// 详情页路由（/scripts/5 等）需映射回一级菜单，否则侧边栏无高亮
+const activeMenu = computed(() => '/' + (route.path.split('/')[1] || 'dashboard'))
 
 const pwdDlg = ref(false)
 const pwdForm = reactive({ oldPassword: '', newPassword: '' })
+const pwdSubmitting = ref(false)
 
 const onCommand = (cmd: string) => {
   if (cmd === 'logout') {
@@ -139,9 +142,19 @@ const onCommand = (cmd: string) => {
 
 const doChangePassword = async () => {
   if (!pwdForm.oldPassword || !pwdForm.newPassword) return ElMessage.warning('请填写完整')
-  await changePassword(pwdForm)
-  pwdDlg.value = false
-  ElMessage.success('密码已修改')
+  if (pwdForm.newPassword.length < 6) return ElMessage.warning('新密码至少 6 位')
+  pwdSubmitting.value = true
+  try {
+    await changePassword(pwdForm)
+  } finally {
+    pwdSubmitting.value = false
+  }
+  // 改密成功后旧 token 已被服务端作废，必须登出重登，否则下一步操作必 401
+  localStorage.removeItem('token')
+  localStorage.removeItem('admin')
+  disconnectStomp()
+  ElMessage.success('密码已修改，请用新密码重新登录')
+  router.push('/login')
 }
 </script>
 

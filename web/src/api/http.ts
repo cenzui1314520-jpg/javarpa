@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '../router'
+import { disconnectStomp } from '../ws/stomp'
 
 const http = axios.create({ baseURL: '/api', timeout: 20000 })
 
@@ -28,6 +29,8 @@ http.interceptors.response.use(
         redirecting = true
         localStorage.removeItem('token')
         localStorage.removeItem('admin')
+        // 同步停掉 STOMP，否则旧 token 每 5s 重连一次触发错误风暴
+        disconnectStomp()
         ElMessage.warning('登录已过期，请重新登录')
         const redirect = encodeURIComponent(location.pathname + location.search)
         router.push(`/login?redirect=${redirect}`).finally(() => { redirecting = false })

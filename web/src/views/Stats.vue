@@ -9,6 +9,7 @@
         start-placeholder="开始日期"
         end-placeholder="结束日期"
         style="width: 260px"
+        :disabled-date="limitRange"
       />
       <el-button type="primary" @click="load">查询</el-button>
       <span style="color: #9aa3b8; font-size: 12px">默认最近 30 天</span>
@@ -49,6 +50,9 @@ import { statsByTask } from '../api'
 
 const range = ref<string[]>([])
 const rows = ref<any[]>([])
+
+// 限制最近 90 天，防止选到数年区间触发后端大范围聚合
+const limitRange = (d: Date) => d.getTime() > Date.now() || d.getTime() < Date.now() - 90 * 86400_000
 
 const totals = computed(() => {
   const t = rows.value.reduce((a, r) => ({
