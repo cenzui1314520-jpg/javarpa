@@ -67,25 +67,43 @@ public class DeviceGroupService {
         require(id);
         groupMapper.deleteById(id);
         memberMapper.delete(new QueryWrapper<DeviceGroupMember>().eq("group_id", id));
-        Device upd = new Device();
-        upd.groupId = 0L;
-        deviceMapper.update(upd, new QueryWrapper<Device>().eq("group_id", id));
+        // 置 NULL 而非 0，与"无分组"语义一致（0 会命中 groupId=0 的错误匹配）
+        deviceMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Device>()
+                .set("group_id", null).eq("group_id", id));
     }
 
+    @Transactional
     public void setMembers(long groupId, List<Long> deviceIds) {
         require(groupId);
-        memberMapper.delete(new QueryWrapper<DeviceGroupMember>().eq("group_id", groupId));
-        if (deviceIds != null) {
-            for (Long deviceId : deviceIds) {
-                DeviceGroupMember m = new DeviceGroupMember();
-                m.groupId = groupId;
-                m.deviceId = deviceId;
-                memberMapper.insert(m);
-                Device upd = new Device();
-                upd.id = deviceId;
-                upd.groupId = groupId;
-                deviceMapper.updateById(upd);
+        List<Long> target = deviceIds == null ? List.of() : deviceIds;
+        for (Long deviceId : target) {
+            if (deviceId == null || deviceMapper.selectById(deviceId) == null) {
+                throw new ApiException("设备不存在: " + deviceId);
             }
+        }
+        List<Long> oldMembers = memberMapper.selectList(
+                        new QueryWrapper<DeviceGroupMember>().eq("group_id", groupId))
+                .stream().map(m -> m.deviceId).toList();
+        memberMapper.delete(new QueryWrapper<DeviceGroupMember>().eq("group_id", groupId));
+        // 移出本组的设备同步清空 group_id，否则灰度 GROUP 匹配仍会命中它们
+        for (Long removed : oldMembers) {
+            if (!target.contains(removed)) {
+                deviceMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Device>()
+                        .set("group_id", null).eq("id", removed).eq("group_id", groupId));
+            }
+        }
+        for (Long deviceId : target) {
+            // 设备只能属于一个分组：先清掉它在其它组的成员行，保证统计与匹配不重复
+            memberMapper.delete(new QueryWrapper<DeviceGroupMember>()
+                    .eq("device_id", deviceId).ne("group_id", groupId));
+            DeviceGroupMember m = new DeviceGroupMember();
+            m.groupId = groupId;
+            m.deviceId = deviceId;
+            memberMapper.insert(m);
+            Device upd = new Device();
+            upd.id = deviceId;
+            upd.groupId = groupId;
+            deviceMapper.updateById(upd);
         }
     }
 

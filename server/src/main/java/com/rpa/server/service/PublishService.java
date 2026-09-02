@@ -70,8 +70,12 @@ public class PublishService {
             upd.stableVersionCode = versionCode;
             scriptMapper.updateById(upd);
         }
-        pushToMatchingDevices(script, version, targetType, targetValue);
+        pushToMatchingDevices(script, version, targetType, targetValue, saltOf(record));
         log.info("script {} v{} published to {}({}) by {}", scriptId, versionCode, targetType, targetValue, operator);
+    }
+
+    private static String saltOf(PublishRecord record) {
+        return record.scriptId + ":" + record.id;
     }
 
     private void validateTarget(String targetType, String targetValue) {
@@ -91,11 +95,12 @@ public class PublishService {
         }
     }
 
-    private void pushToMatchingDevices(Script script, ScriptVersion version, String targetType, String targetValue) {
+    private void pushToMatchingDevices(Script script, ScriptVersion version, String targetType,
+                                       String targetValue, String salt) {
         List<Device> devices = deviceMapper.selectList(
                 new QueryWrapper<Device>().eq("status", 1).eq("online", 1));
         for (Device d : devices) {
-            if (matches(d, targetType, targetValue)) {
+            if (matches(d, targetType, targetValue, salt)) {
                 sessionManager.send(String.valueOf(d.id), updateMessage(script.id, version));
             }
         }
@@ -115,14 +120,14 @@ public class PublishService {
         List<PublishRecord> records = publishRecordMapper.selectList(
                 new QueryWrapper<PublishRecord>().eq("script_id", scriptId).orderByDesc("id"));
         for (PublishRecord r : records) {
-            if (matches(device, r.targetType, r.targetValue)) return r.versionCode;
+            if (matches(device, r.targetType, r.targetValue, saltOf(r))) return r.versionCode;
         }
         Script s = scriptMapper.selectById(scriptId);
         return s == null || s.stableVersionCode == null ? 0 : s.stableVersionCode;
     }
 
-    private boolean matches(Device device, String targetType, String targetValue) {
-        return GrayRule.matches(device.deviceSn, device.groupId, targetType, targetValue);
+    private boolean matches(Device device, String targetType, String targetValue, String salt) {
+        return GrayRule.matches(device.deviceSn, device.groupId, targetType, targetValue, salt);
     }
 
     /** After device register: compute script updates the device should install. */

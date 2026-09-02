@@ -229,8 +229,15 @@ public class DeviceService {
         if (device != null) {
             pushScriptUpdates(device, data.get("installedVersions"));
         }
+        // 先回收上次处理中未确认的命令，再逐条发送并 ACK，发送失败回滚入队防止静默丢失
+        redisQueue.recoverProcessing(id);
         for (WsMessage pending : redisQueue.drainPending(id)) {
-            sessionManager.send(deviceId, pending);
+            if (sessionManager.send(deviceId, pending)) {
+                redisQueue.ackPending(id, pending);
+            } else {
+                redisQueue.nackPending(id, pending);
+                break; // 连接已断，余下命令留给下次注册
+            }
         }
         stomp.pushDeviceStatus(id, true);
     }
@@ -292,9 +299,16 @@ public class DeviceService {
         List<Device> stale = deviceMapper.selectList(
                 new QueryWrapper<Device>().eq("online", 1).lt("last_active_at", deadline));
         for (Device d : stale) {
-            log.info("device {} heartbeat timeout, mark offline", d.deviceSn);
-            sessionManager.forceClose(String.valueOf(d.id));
-            markOffline(String.valueOf(d.id));
+            // 条件更新防竞态：心跳恰好赶在扫描窗口内到达时本更新不生效，避免误踢在线设备
+            int updated = deviceMapper.update(null,
+                    new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Device>()
+                            .set("online", 0)
+                            .eq("id", d.id).eq("online", 1).lt("last_active_at", deadline));
+            if (updated > 0) {
+                log.info("device {} heartbeat timeout, mark offline", d.deviceSn);
+                sessionManager.forceClose(String.valueOf(d.id));
+                stomp.pushDeviceStatus(d.id, false);
+            }
         }
     }
 

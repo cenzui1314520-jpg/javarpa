@@ -15,6 +15,21 @@ public final class DigestUtil {
         return digest("MD5", data);
     }
 
+    /** 流式计算文件 MD5，避免整包读入内存。 */
+    public static String md5Hex(java.nio.file.Path file) {
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(file)) {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                md.update(buf, 0, n);
+            }
+            return HexFormat.of().formatHex(md.digest());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     public static String sha256Hex(String data) {
         return digest("SHA-256", data.getBytes(StandardCharsets.UTF_8));
     }

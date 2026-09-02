@@ -24,15 +24,20 @@ public class TaskService {
     private final TaskMapper taskMapper;
     private final TaskDeviceMapper taskDeviceMapper;
     private final ScriptMapper scriptMapper;
+    private final com.rpa.server.mapper.ScriptVersionMapper versionMapper;
+    private final com.rpa.server.mapper.DeviceMapper deviceMapper;
     private final ScriptService scriptService;
     private final TaskSchedulerService schedulerService;
 
     public TaskService(TaskMapper taskMapper, TaskDeviceMapper taskDeviceMapper,
-                       ScriptMapper scriptMapper, ScriptService scriptService,
+                       ScriptMapper scriptMapper, com.rpa.server.mapper.ScriptVersionMapper versionMapper,
+                       com.rpa.server.mapper.DeviceMapper deviceMapper, ScriptService scriptService,
                        TaskSchedulerService schedulerService) {
         this.taskMapper = taskMapper;
         this.taskDeviceMapper = taskDeviceMapper;
         this.scriptMapper = scriptMapper;
+        this.versionMapper = versionMapper;
+        this.deviceMapper = deviceMapper;
         this.scriptService = scriptService;
         this.schedulerService = schedulerService;
     }
@@ -41,6 +46,8 @@ public class TaskService {
     public Task create(String name, long scriptId, Integer versionCode, String paramsJson,
                        String scheduleType, String cronExpr, int maxRetries, List<Long> deviceIds) {
         validate(name, scriptId, paramsJson, scheduleType, cronExpr);
+        validateVersion(scriptId, versionCode);
+        validateDevices(deviceIds);
         Task t = new Task();
         t.name = name;
         t.scriptId = scriptId;
@@ -61,6 +68,8 @@ public class TaskService {
                        String scheduleType, String cronExpr, Integer maxRetries, List<Long> deviceIds) {
         Task t = require(id);
         validate(name != null ? name : t.name, t.scriptId, paramsJson, scheduleType, cronExpr);
+        validateVersion(t.scriptId, versionCode != null ? versionCode : t.versionCode);
+        if (deviceIds != null) validateDevices(deviceIds);
         Task upd = new Task();
         upd.id = id;
         if (name != null) upd.name = name;
@@ -93,6 +102,23 @@ public class TaskService {
         }
         if ("CRON".equals(scheduleType) && (cronExpr == null || cronExpr.isBlank())) {
             throw new ApiException("CRON 任务必须填写 cron 表达式");
+        }
+    }
+
+    /** 版本号指定了就必须已上传，避免任务启动时才报"版本未上传"产生僵尸 PENDING。 */
+    private void validateVersion(long scriptId, Integer versionCode) {
+        if (versionCode == null) return;
+        Long exists = versionMapper.selectCount(new QueryWrapper<com.rpa.server.entity.ScriptVersion>()
+                .eq("script_id", scriptId).eq("version_code", versionCode));
+        if (exists == 0) throw new ApiException("脚本版本 v" + versionCode + " 不存在，请先上传");
+    }
+
+    private void validateDevices(List<Long> deviceIds) {
+        if (deviceIds == null || deviceIds.isEmpty()) throw new ApiException("请至少选择一台执行设备");
+        for (Long deviceId : deviceIds) {
+            if (deviceId == null || deviceMapper.selectById(deviceId) == null) {
+                throw new ApiException("设备不存在: " + deviceId);
+            }
         }
     }
 

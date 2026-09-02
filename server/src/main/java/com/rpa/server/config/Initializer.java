@@ -36,8 +36,9 @@ public class Initializer implements CommandLineRunner {
             if (fromEnv) {
                 log.warn("default admin created from RPA_ADMIN_PASSWORD, change it after first login");
             } else {
-                // 不再使用可预测的弱口令，随机密码仅此一次展示
-                log.warn("default admin created: admin / {} (random, shown ONCE — save and change it)", password);
+                // 随机口令不整串进日志（日志聚合/截图留痕即凭据泄露），首登前 4 位仅用于人工比对
+                log.warn("default admin created: admin / {}**** (random, shown partially — "
+                        + "use RPA_ADMIN_PASSWORD to preset, or reset via DB if lost)", password.substring(0, 4));
             }
         }
     }

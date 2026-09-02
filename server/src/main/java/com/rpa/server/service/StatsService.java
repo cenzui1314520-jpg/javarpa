@@ -55,6 +55,13 @@ public class StatsService {
         recomputeDaily(LocalDate.now().minusDays(1));
     }
 
+    /** 离线设备的迟到 RESULT 在 01:05 聚合后才会落库，每小时补偿重算昨日保证口径一致。 */
+    @Scheduled(cron = "0 40 * * * ?")
+    @Transactional
+    public void recomputeYesterdayHourly() {
+        recomputeDaily(LocalDate.now().minusDays(1));
+    }
+
     /** Rebuild stats_daily of a given date from task_execution. */
     @Transactional
     public void recomputeDaily(LocalDate date) {
@@ -64,34 +71,37 @@ public class StatsService {
 
         Map<Long, Task> tasks = new HashMap<>();
         taskMapper.selectList(null).forEach(t -> tasks.put(t.id, t));
-        List<TaskExecution> executions = executionMapper.selectList(new QueryWrapper<TaskExecution>()
-                .ge("created_at", start).lt("created_at", end));
-
-        Map<Long, int[]> byTask = new HashMap<>(); // [total, success, fail, successCnt, failCnt]
-        for (TaskExecution e : executions) {
-            int[] arr = byTask.computeIfAbsent(e.taskId, k -> new int[5]);
-            arr[0]++;
-            if ("SUCCESS".equals(e.status)) arr[1]++;
-            if ("FAILED".equals(e.status)) arr[2]++;
-            arr[3] += e.successCount == null ? 0 : e.successCount;
-            arr[4] += e.failCount == null ? 0 : e.failCount;
-        }
-        for (Map.Entry<Long, int[]> entry : byTask.entrySet()) {
-            Task task = tasks.get(entry.getKey());
+        // SQL 聚合替代全量加载，避免大表拖垮 Dashboard
+        List<Map<String, Object>> rows = executionMapper.selectMaps(
+                new QueryWrapper<TaskExecution>()
+                        .select("task_id",
+                                "COUNT(*) AS total",
+                                "SUM(status = 'SUCCESS') AS success",
+                                "SUM(status = 'FAILED') AS failed",
+                                "COALESCE(SUM(success_count), 0) AS successCnt",
+                                "COALESCE(SUM(fail_count), 0) AS failCnt")
+                        .ge("created_at", start).lt("created_at", end)
+                        .groupBy("task_id"));
+        for (Map<String, Object> row : rows) {
+            long taskId = ((Number) row.get("task_id")).longValue();
+            Task task = tasks.get(taskId);
             if (task == null) continue;
             StatsDaily s = new StatsDaily();
             s.statDate = date;
-            s.taskId = entry.getKey();
+            s.taskId = taskId;
             s.scriptId = task.scriptId;
-            int[] a = entry.getValue();
-            s.totalExec = a[0];
-            s.successExec = a[1];
-            s.failExec = a[2];
-            s.successCnt = a[3];
-            s.failCnt = a[4];
+            s.totalExec = intValue(row.get("total"));
+            s.successExec = intValue(row.get("success"));
+            s.failExec = intValue(row.get("failed"));
+            s.successCnt = intValue(row.get("successCnt"));
+            s.failCnt = intValue(row.get("failCnt"));
             statsMapper.insert(s);
         }
-        log.info("stats of {} recomputed: {} tasks", date, byTask.size());
+        log.info("stats of {} recomputed: {} tasks", date, rows.size());
+    }
+
+    private static int intValue(Object v) {
+        return v == null ? 0 : ((Number) v).intValue();
     }
 
     public Map<String, Object> summary() {
@@ -105,21 +115,40 @@ public class StatsService {
                 new QueryWrapper<TaskDevice>().eq("status", "RUNNING")));
 
         LocalDate today = LocalDate.now();
-        LocalDateTime start = today.atStartOfDay();
-        List<TaskExecution> executions = executionMapper.selectList(
-                new QueryWrapper<TaskExecution>().ge("created_at", start));
-        long total = executions.size();
-        long success = executions.stream().filter(e -> "SUCCESS".equals(e.status)).count();
-        long failed = executions.stream().filter(e -> "FAILED".equals(e.status)).count();
-        long successCnt = executions.stream().mapToLong(e -> e.successCount == null ? 0 : e.successCount).sum();
-        long failCnt = executions.stream().mapToLong(e -> e.failCount == null ? 0 : e.failCount).sum();
-        m.put("todayExecTotal", total);
-        m.put("todaySuccess", success);
-        m.put("todayFailed", failed);
+        Map<String, Object> agg = aggregateSince(today.atStartOfDay());
+        m.put("todayExecTotal", agg.get("total"));
+        m.put("todaySuccess", agg.get("success"));
+        m.put("todayFailed", agg.get("failed"));
+        long total = ((Number) agg.get("total")).longValue();
+        long success = ((Number) agg.get("success")).longValue();
         m.put("todaySuccessRate", total == 0 ? null : Math.round(success * 1000.0 / total) / 10.0);
-        m.put("todayOpSuccess", successCnt);
-        m.put("todayOpFail", failCnt);
+        m.put("todayOpSuccess", agg.get("successCnt"));
+        m.put("todayOpFail", agg.get("failCnt"));
         return m;
+    }
+
+    /** SQL 聚合统计某时刻起的执行结果，避免全量拉取 task_execution。 */
+    private Map<String, Object> aggregateSince(LocalDateTime start) {
+        List<Map<String, Object>> rows = executionMapper.selectMaps(
+                new QueryWrapper<TaskExecution>()
+                        .select("COUNT(*) AS total",
+                                "SUM(status = 'SUCCESS') AS success",
+                                "SUM(status = 'FAILED') AS failed",
+                                "COALESCE(SUM(success_count), 0) AS successCnt",
+                                "COALESCE(SUM(fail_count), 0) AS failCnt")
+                        .ge("created_at", start));
+        Map<String, Object> r = rows.isEmpty() ? Map.of() : rows.get(0);
+        Map<String, Object> result = new HashMap<>();
+        result.put("total", longValue(r.get("total")));
+        result.put("success", longValue(r.get("success")));
+        result.put("failed", longValue(r.get("failed")));
+        result.put("successCnt", longValue(r.get("successCnt")));
+        result.put("failCnt", longValue(r.get("failCnt")));
+        return result;
+    }
+
+    private static long longValue(Object v) {
+        return v == null ? 0L : ((Number) v).longValue();
     }
 
     public List<Map<String, Object>> trend(int days) {
@@ -130,11 +159,10 @@ public class StatsService {
             Map<String, Object> row = new HashMap<>();
             row.put("date", date.toString());
             if (date.equals(today)) {
-                List<TaskExecution> executions = executionMapper.selectList(
-                        new QueryWrapper<TaskExecution>().ge("created_at", date.atStartOfDay()));
-                row.put("total", executions.size());
-                row.put("success", executions.stream().filter(e -> "SUCCESS".equals(e.status)).count());
-                row.put("failed", executions.stream().filter(e -> "FAILED".equals(e.status)).count());
+                Map<String, Object> agg = aggregateSince(date.atStartOfDay());
+                row.put("total", agg.get("total"));
+                row.put("success", agg.get("success"));
+                row.put("failed", agg.get("failed"));
             } else {
                 List<StatsDaily> stats = statsMapper.selectList(
                         new QueryWrapper<StatsDaily>().eq("stat_date", date));
@@ -155,34 +183,36 @@ public class StatsService {
         Map<Long, String> scriptNames = new HashMap<>();
         scripts.forEach((id, s) -> scriptNames.put(id, s.name));
 
-        List<TaskExecution> executions = executionMapper.selectList(new QueryWrapper<TaskExecution>()
-                .ge("created_at", start.atStartOfDay())
-                .lt("created_at", end.plusDays(1).atStartOfDay()));
-        Map<Long, int[]> byTask = new HashMap<>();
-        for (TaskExecution e : executions) {
-            int[] arr = byTask.computeIfAbsent(e.taskId, k -> new int[5]);
-            arr[0]++;
-            if ("SUCCESS".equals(e.status)) arr[1]++;
-            if ("FAILED".equals(e.status)) arr[2]++;
-            arr[3] += e.successCount == null ? 0 : e.successCount;
-            arr[4] += e.failCount == null ? 0 : e.failCount;
-        }
+        List<Map<String, Object>> rows = executionMapper.selectMaps(
+                new QueryWrapper<TaskExecution>()
+                        .select("task_id",
+                                "COUNT(*) AS total",
+                                "SUM(status = 'SUCCESS') AS success",
+                                "SUM(status = 'FAILED') AS failed",
+                                "COALESCE(SUM(success_count), 0) AS successCnt",
+                                "COALESCE(SUM(fail_count), 0) AS failCnt")
+                        .ge("created_at", start.atStartOfDay())
+                        .lt("created_at", end.plusDays(1).atStartOfDay())
+                        .groupBy("task_id"));
         List<Map<String, Object>> result = new ArrayList<>();
-        byTask.forEach((taskId, a) -> {
+        for (Map<String, Object> row : rows) {
+            long taskId = ((Number) row.get("task_id")).longValue();
             Task task = tasks.get(taskId);
-            if (task == null) return;
+            if (task == null) continue;
+            long total = longValue(row.get("total"));
+            long success = longValue(row.get("success"));
             Map<String, Object> m = new HashMap<>();
             m.put("taskId", taskId);
             m.put("taskName", task.name);
             m.put("scriptName", scriptNames.get(task.scriptId));
-            m.put("total", a[0]);
-            m.put("success", a[1]);
-            m.put("failed", a[2]);
-            m.put("successRate", a[0] == 0 ? null : Math.round(a[1] * 1000.0 / a[0]) / 10.0);
-            m.put("opSuccess", a[3]);
-            m.put("opFail", a[4]);
+            m.put("total", total);
+            m.put("success", success);
+            m.put("failed", longValue(row.get("failed")));
+            m.put("successRate", total == 0 ? null : Math.round(success * 1000.0 / total) / 10.0);
+            m.put("opSuccess", longValue(row.get("successCnt")));
+            m.put("opFail", longValue(row.get("failCnt")));
             result.add(m);
-        });
+        }
         result.sort((x, y) -> Long.compare((long) y.get("total"), (long) x.get("total")));
         return result;
     }

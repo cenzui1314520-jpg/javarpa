@@ -5,7 +5,8 @@ spring:
   application:
     name: rpa-server
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/rpa?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    # 跨机/公网部署时置 MYSQL_SSL=true 加密链路
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/rpa?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=${MYSQL_SSL:false}
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:root123456}
     driver-class-name: com.mysql.cj.jdbc.Driver

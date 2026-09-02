@@ -51,6 +51,8 @@ public class TaskController {
 
     @PostMapping
     public R<Task> create(@RequestBody TaskCreateReq req) {
+        // scriptId 缺失直接 400，避免 Long 拆箱 NPE 变成 500
+        if (req.scriptId() == null) throw new com.rpa.server.common.ApiException("scriptId 不能为空");
         return R.ok(taskService.create(req.name(), req.scriptId(), req.versionCode(),
                 req.paramsJson(), req.scheduleType(), req.cronExpr(),
                 req.maxRetries() == null ? 0 : req.maxRetries(), req.deviceIds()));

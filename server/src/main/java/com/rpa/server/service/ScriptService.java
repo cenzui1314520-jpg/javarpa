@@ -33,6 +33,7 @@ public class ScriptService {
 
     private final ScriptMapper scriptMapper;
     private final ScriptVersionMapper versionMapper;
+    private final com.rpa.server.mapper.PublishRecordMapper publishRecordMapper;
     private final TaskMapper taskMapper;
     private final TaskDeviceMapper taskDeviceMapper;
     private final PublishService publishService;
@@ -41,10 +42,12 @@ public class ScriptService {
     private String uploadDir;
 
     public ScriptService(ScriptMapper scriptMapper, ScriptVersionMapper versionMapper,
+                         com.rpa.server.mapper.PublishRecordMapper publishRecordMapper,
                          TaskMapper taskMapper, TaskDeviceMapper taskDeviceMapper,
                          PublishService publishService) {
         this.scriptMapper = scriptMapper;
         this.versionMapper = versionMapper;
+        this.publishRecordMapper = publishRecordMapper;
         this.taskMapper = taskMapper;
         this.taskDeviceMapper = taskDeviceMapper;
         this.publishService = publishService;
@@ -81,6 +84,9 @@ public class ScriptService {
         Script s = require(id);
         scriptMapper.deleteById(id);
         versionMapper.delete(new QueryWrapper<ScriptVersion>().eq("script_id", id));
+        // 发布记录一并清理，避免残留记录影响同名脚本重建后的灰度判定
+        publishRecordMapper.delete(new QueryWrapper<com.rpa.server.entity.PublishRecord>()
+                .eq("script_id", id));
         Path dir = scriptDir(s.pkgName);
         try (var stream = Files.walk(dir)) {
             stream.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
@@ -110,41 +116,63 @@ public class ScriptService {
                 .eq("script_id", scriptId).eq("version_code", versionCode));
         if (exists > 0) throw new ApiException("该版本号已存在");
 
-        byte[] bytes;
-        try {
-            bytes = file.getBytes();
-        } catch (IOException e) {
-            throw new ApiException("读取上传文件失败");
-        }
-        validateZip(bytes);
-
-        String md5 = DigestUtil.md5Hex(bytes);
         String relativePath = "/files/scripts/" + script.pkgName + "/" + versionCode + ".zip";
         Path target = scriptDir(script.pkgName).resolve(versionCode + ".zip");
+        // 流式落盘到临时文件，避免整包读入堆内存；并发上传同版本时各自写独立 tmp 互不覆盖
+        Path tmp = null;
         try {
             Files.createDirectories(target.getParent());
-            Files.write(target, bytes);
-        } catch (IOException e) {
-            throw new ApiException(500, "保存脚本文件失败");
-        }
+            tmp = Files.createTempFile(target.getParent(), versionCode + ".zip.", ".part");
+            try (java.io.InputStream in = file.getInputStream()) {
+                Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            long size = Files.size(tmp);
+            if (size <= 0) throw new ApiException("上传内容为空");
+            String md5 = DigestUtil.md5Hex(tmp);
+            validateZip(tmp);
 
-        ScriptVersion v = new ScriptVersion();
-        v.scriptId = scriptId;
-        v.versionCode = versionCode;
-        v.versionName = versionName;
-        v.filePath = relativePath;
-        v.fileMd5 = md5;
-        v.fileSize = (long) bytes.length;
-        v.status = 1;
-        v.changelog = changelog;
-        v.createdBy = operator;
-        try {
-            versionMapper.insert(v);
+            ScriptVersion v = new ScriptVersion();
+            v.scriptId = scriptId;
+            v.versionCode = versionCode;
+            v.versionName = versionName;
+            v.filePath = relativePath;
+            v.fileMd5 = md5;
+            v.fileSize = size;
+            v.status = 1;
+            v.changelog = changelog;
+            v.createdBy = operator;
+            try {
+                // 先占住唯一版本号再落正式文件；失败只清理自己的 tmp，绝不触碰已有版本文件
+                versionMapper.insert(v);
+            } catch (Exception e) {
+                Files.deleteIfExists(tmp);
+                throw e;
+            }
+            atomicMove(tmp, target);
+            return v;
+        } catch (ApiException e) {
+            deleteQuietly(tmp);
+            throw e;
+        } catch (IOException e) {
+            deleteQuietly(tmp);
+            throw new ApiException(500, "保存脚本文件失败");
         } catch (Exception e) {
-            try { Files.deleteIfExists(target); } catch (IOException ignored) {} // 回滚孤儿文件
+            deleteQuietly(tmp);
             throw e;
         }
-        return v;
+    }
+
+    private void atomicMove(Path src, Path dst) throws IOException {
+        try {
+            Files.move(src, dst, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            Files.move(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private void deleteQuietly(Path p) {
+        if (p == null) return;
+        try { Files.deleteIfExists(p); } catch (IOException ignored) {}
     }
 
     private Path scriptDir(String pkgName) {
@@ -153,35 +181,26 @@ public class ScriptService {
     }
 
     /** Zip must contain root main.js + config.json, no path traversal entries. */
-    private void validateZip(byte[] bytes) {
-        Path tmp = null;
-        try {
-            tmp = Files.createTempFile("rpa-upload-", ".zip");
-            Files.write(tmp, bytes);
-            try (ZipFile zip = new ZipFile(tmp.toFile())) {
-                boolean hasMain = false, hasConfig = false;
-                Enumeration<? extends ZipEntry> entries = zip.entries();
-                while (entries.hasMoreElements()) {
-                    ZipEntry e = entries.nextElement();
-                    String name = e.getName();
-                    // 拦截路径穿越与 Windows 盘符/反斜杠条目
-                    if (name.contains("..") || name.startsWith("/") || name.contains(":") || name.contains("\\")) {
-                        throw new ApiException("非法的 zip 条目: " + name);
-                    }
-                    if (name.equals("main.js")) hasMain = true;
-                    if (name.equals("config.json")) hasConfig = true;
+    private void validateZip(Path zipFile) {
+        try (ZipFile zip = new ZipFile(zipFile.toFile())) {
+            boolean hasMain = false, hasConfig = false;
+            Enumeration<? extends ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry e = entries.nextElement();
+                String name = e.getName();
+                // 拦截路径穿越与 Windows 盘符/反斜杠条目
+                if (name.contains("..") || name.startsWith("/") || name.contains(":") || name.contains("\\")) {
+                    throw new ApiException("非法的 zip 条目: " + name);
                 }
-                if (!hasMain) throw new ApiException("zip 包根目录缺少 main.js");
-                if (!hasConfig) throw new ApiException("zip 包根目录缺少 config.json");
+                if (name.equals("main.js")) hasMain = true;
+                if (name.equals("config.json")) hasConfig = true;
             }
+            if (!hasMain) throw new ApiException("zip 包根目录缺少 main.js");
+            if (!hasConfig) throw new ApiException("zip 包根目录缺少 config.json");
         } catch (ApiException e) {
             throw e;
         } catch (IOException e) {
             throw new ApiException("zip 包解析失败");
-        } finally {
-            if (tmp != null) {
-                try { Files.deleteIfExists(tmp); } catch (IOException ignored) {}
-            }
         }
     }
 

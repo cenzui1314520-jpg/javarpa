@@ -79,9 +79,11 @@ public class TaskControlService {
     private void controlOne(Task task, TaskDevice td, String action) {
         switch (action) {
             case "start" -> {
+                // 列级更新，避免旧快照整实体覆盖并发写入的进度/计数
+                taskDeviceMapper.update(null, new UpdateWrapper<TaskDevice>()
+                        .set("status", "PENDING").set("retry_count", 0).eq("id", td.id));
                 td.status = "PENDING";
                 td.retryCount = 0;
-                taskDeviceMapper.updateById(td);
                 dispatchStart(task, td);
             }
             case "pause" -> sendOrQueue(td.deviceId, WsMessage.of("CMD_PAUSE",
@@ -89,8 +91,9 @@ public class TaskControlService {
             case "stop" -> sendOrQueue(td.deviceId, WsMessage.of("CMD_STOP",
                     Map.of("taskId", task.id)));
             case "restart" -> {
+                taskDeviceMapper.update(null, new UpdateWrapper<TaskDevice>()
+                        .set("status", "PENDING").eq("id", td.id));
                 td.status = "PENDING";
-                taskDeviceMapper.updateById(td);
                 sendOrQueue(td.deviceId, WsMessage.of("CMD_RESTART",
                         Map.of("taskId", task.id)));
             }
@@ -138,8 +141,9 @@ public class TaskControlService {
     }
 
     private void markFailed(TaskDevice td, String reason) {
+        taskDeviceMapper.update(null, new UpdateWrapper<TaskDevice>()
+                .set("status", "FAILED").eq("id", td.id));
         td.status = "FAILED";
-        taskDeviceMapper.updateById(td);
         TaskExecution exec = new TaskExecution();
         exec.taskId = td.taskId;
         exec.deviceId = td.deviceId;
@@ -163,14 +167,15 @@ public class TaskControlService {
     private static final List<String> TERMINAL_STATUSES = List.of("SUCCESS", "FAILED", "STOPPED");
 
     public void updateProgress(long taskId, long deviceId, int successCount, int failCount) {
-        // 条件更新：终态行不再被心跳覆盖回 RUNNING，避免读-改-写并发丢失更新
+        // 条件更新：终态行不再被心跳覆盖回 RUNNING；PAUSED 也不被未生效的心跳打回 RUNNING
         taskDeviceMapper.update(null, new UpdateWrapper<TaskDevice>()
                 .set("success_count", successCount)
                 .set("fail_count", failCount)
                 .set("last_run_at", LocalDateTime.now())
                 .set("status", "RUNNING")
                 .eq("task_id", taskId).eq("device_id", deviceId)
-                .notIn("status", TERMINAL_STATUSES));
+                .notIn("status", TERMINAL_STATUSES)
+                .ne("status", "PAUSED"));
     }
 
     /** Handle RESULT reported by device, including failure retry. */
@@ -187,13 +192,14 @@ public class TaskControlService {
                 .set("success_count", successCount)
                 .set("fail_count", failCount)
                 .set("last_run_at", LocalDateTime.now())
-                .set("status", terminal ? status : "RUNNING")
+                // 设备上报 PAUSED 时如实落库，供管理端展示真实暂停态
+                .set("status", terminal || "PAUSED".equals(status) ? status : "RUNNING")
                 .eq("task_id", taskId).eq("device_id", deviceId)
                 .notIn("status", TERMINAL_STATUSES));
         if (updated == 0) return; // 行已处于终态，忽略迟到/重复结果
         td.successCount = successCount;
         td.failCount = failCount;
-        td.status = terminal ? status : "RUNNING";
+        td.status = terminal || "PAUSED".equals(status) ? status : "RUNNING";
 
         if (terminal) {
             TaskExecution exec = new TaskExecution();

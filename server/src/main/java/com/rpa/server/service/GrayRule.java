@@ -4,7 +4,9 @@ package com.rpa.server.service;
 public final class GrayRule {
     private GrayRule() {}
 
-    public static boolean matches(String deviceSn, Long groupId, String targetType, String targetValue) {
+    /** @param salt 灰度盐（建议 scriptId:publishRecordId），避免不同脚本/发布命中同一批设备 */
+    public static boolean matches(String deviceSn, Long groupId, String targetType,
+                                  String targetValue, String salt) {
         if (targetType == null) return false;
         switch (targetType) {
             case "ALL":
@@ -22,15 +24,15 @@ public final class GrayRule {
                 } catch (NumberFormatException e) {
                     return false;
                 }
-                return percentHit(deviceSn, pct);
+                return percentHit(deviceSn, salt, pct);
             default:
                 return false;
         }
     }
 
-    public static boolean percentHit(String deviceSn, int percent) {
+    public static boolean percentHit(String deviceSn, String salt, int percent) {
         if (percent <= 0) return false;
         if (percent >= 100) return true;
-        return Math.floorMod(deviceSn.hashCode(), 100) < percent;
+        return Math.floorMod((deviceSn + ":" + (salt == null ? "" : salt)).hashCode(), 100) < percent;
     }
 }

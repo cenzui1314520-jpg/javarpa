@@ -15,6 +15,8 @@ public class AsyncConfig {
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(10000);
         executor.setThreadNamePrefix("device-log-");
+        // 队列满时由提交线程执行而非抛异常，高峰期设备日志不丢
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
         return executor;
     }
@@ -26,6 +28,7 @@ public class AsyncConfig {
         executor.setMaxPoolSize(8);
         executor.setQueueCapacity(1000);
         executor.setThreadNamePrefix("cmd-dispatch-");
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
         return executor;
     }
