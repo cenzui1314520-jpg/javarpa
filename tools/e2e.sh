@@ -4,8 +4,13 @@ set -e
 BASE=http://localhost:8080
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY="python3 -c"
+ADMIN_PASSWORD="${E2E_PASSWORD:-admin123}"
+MOCK_PID=""
 
 say() { echo; echo "===== $* ====="; }
+
+# 中途失败也清理 mock 进程，避免残留
+trap '[ -n "$MOCK_PID" ] && kill "$MOCK_PID" 2>/dev/null' EXIT
 
 api() { # method path token [json]
   local m=$1 p=$2 t=$3 body=$4
@@ -19,7 +24,7 @@ api() { # method path token [json]
 }
 
 say "1. admin login"
-LOGIN=$(curl -s -X POST $BASE/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin123"}')
+LOGIN=$(curl -s -X POST $BASE/auth/login -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}")
 TOKEN=$($PY "import json,sys;print(json.loads(sys.argv[1])['data']['token'])" "$LOGIN")
 echo "token ok: ${TOKEN:0:20}..."
 
@@ -45,7 +50,7 @@ say "3. create script + upload version 1 + publish ALL"
 SCRIPT=$(api POST /scripts "$TOKEN" '{"name":"演示脚本","pkgName":"demo.calculator","description":"打开计算器计算1+2"}')
 SCRIPT_ID=$($PY "import json,sys;print(json.loads(sys.argv[1])['data']['id'])" "$SCRIPT")
 echo "scriptId=$SCRIPT_ID"
-cd "$ROOT/examples/demo-script" && zip -q -r /tmp/demo-v1.zip main.js config.json && cd - > /dev/null
+cd "$ROOT/examples/demo-script" && rm -f /tmp/demo-v1.zip && zip -q -r /tmp/demo-v1.zip main.js config.json && cd - > /dev/null
 UP=$(curl -s -X POST "$BASE/scripts/$SCRIPT_ID/versions" -H "Authorization: Bearer $TOKEN" \
   -F "file=@/tmp/demo-v1.zip" -F "versionCode=1" -F "versionName=1.0.0" -F "changelog=first release")
 echo "upload: $UP"
@@ -53,8 +58,14 @@ api POST "/scripts/$SCRIPT_ID/publish" "$TOKEN" "{\"versionCode\":1,\"targetType
 echo "published"
 
 say "4. start mock device (waits for commands, runs in background)"
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-$JAVA_HOME/bin/java "$ROOT/tools/mock-device/MockDevice.java" http://localhost:8080 MOCK-001 "$SECRET" > /tmp/mock-device.log 2>&1 &
+if [ -z "$JAVA_HOME" ] || [ ! -x "$JAVA_HOME/bin/java" ]; then
+  for cand in /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+              /opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home \
+              /usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home; do
+    if [ -x "$cand/bin/java" ]; then export JAVA_HOME="$cand"; break; fi
+  done
+fi
+"$JAVA_HOME/bin/java" "$ROOT/tools/mock-device/MockDevice.java" http://localhost:8080 MOCK-001 "$SECRET" > /tmp/mock-device.log 2>&1 &
 MOCK_PID=$!
 sleep 6
 echo "--- mock device log ---"

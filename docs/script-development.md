@@ -282,6 +282,7 @@ if (!img) throw new Error("截图失败：需 Android 11+ 且无障碍已开启"
 | `img.findColor("#FF4444", threshold)` | `{x, y}` \| null | 全屏按行扫描找**第一个**匹配点 |
 | `img.findImage("res/btn.png", threshold)` | `{x, y}` \| null | 模板匹配，返回模板**左上角**坐标；模板必须是脚本包内相对路径 |
 | `img.save("out/1.png")` | boolean | 保存 PNG 到脚本包目录（排查取证用） |
+| `auto.readText("res/words.txt")` | string \| null | 读取脚本包内 UTF-8 文本资源；路径不得越出包目录，文件不存在返回 null |
 
 - `threshold`：颜色容差，`R/G/B` **各分量**允许的偏差，`0` = 严格相等。找图建议 8~16，找色建议 0~10
 - 帧率建议：循环截图间隔 ≥ 200ms，避免截图洪泛拖慢设备

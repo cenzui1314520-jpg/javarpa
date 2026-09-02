@@ -149,8 +149,11 @@ public class MockDevice {
                     .header("X-Device-Secret", secret)
                     .GET().build();
             HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
-            byte[] body = resp.body();
-            byte[] digest = MessageDigest.getInstance("MD5").digest(body);
+            if (resp.statusCode() != 200) {
+                // 避免对错误页算 md5 误报 mismatch
+                throw new IllegalStateException("download failed HTTP " + resp.statusCode() + " for " + path);
+            }
+            byte[] digest = MessageDigest.getInstance("MD5").digest(resp.body());
             StringBuilder sb = new StringBuilder();
             for (byte b : digest) sb.append(String.format("%02x", b));
             return sb.toString();
@@ -173,8 +176,10 @@ public class MockDevice {
         if (i < 0) return "";
         i += key.length() + 3;
         while (i < json.length() && json.charAt(i) == ' ') i++;
+        if (i >= json.length()) return "";
         if (json.charAt(i) == '"') {
             int end = json.indexOf('"', i + 1);
+            if (end < 0) return json.substring(i + 1); // 串尾缺右引号，取剩余
             return json.substring(i + 1, end);
         }
         int end = i;
