@@ -57,9 +57,10 @@ public class RedisQueueService {
             String src = KEY_PREFIX + deviceId;
             String processing = src + PROCESSING_SUFFIX;
             for (int i = 0; i < 50; i++) {
-                // 队头取出、队尾入 processing，保持 FIFO；未 ACK 前不丢
-                String json = redis.opsForList().move(src, processing,
+                // 签名为 move(sourceKey, from, destinationKey, to)：队头取出、队尾入 processing，保持 FIFO；未 ACK 前不丢
+                String json = redis.opsForList().move(src,
                         org.springframework.data.redis.connection.RedisListCommands.Direction.LEFT,
+                        processing,
                         org.springframework.data.redis.connection.RedisListCommands.Direction.RIGHT);
                 if (json == null) break;
                 result.add(MAPPER.readValue(json, WsMessage.class));
