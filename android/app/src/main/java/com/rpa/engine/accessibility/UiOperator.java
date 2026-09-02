@@ -38,24 +38,43 @@ public final class UiOperator {
         if (Build.VERSION.SDK_INT >= 21) {
             for (android.view.accessibility.AccessibilityWindowInfo w : service.getWindows()) {
                 AccessibilityNodeInfo r = w.getRoot();
-                if (r != null && !roots.contains(r)) roots.add(r);
+                if (r != null && !containsRef(roots, r)) roots.add(r);
             }
         }
+        AccessibilityNodeInfo hit = null;
         for (AccessibilityNodeInfo r : roots) {
-            AccessibilityNodeInfo hit = bfs(r, c);
-            if (hit != null) return hit;
+            hit = bfs(r, c);
+            if (hit != null) break;
         }
+        if (hit != null) return hit;
+        recycleAll(roots); // 未命中时释放根节点；命中节点交调用方使用后 recycle
         return null;
+    }
+
+    private static boolean containsRef(List<AccessibilityNodeInfo> list, AccessibilityNodeInfo node) {
+        // AccessibilityNodeInfo 未重写 equals，按引用去重
+        for (AccessibilityNodeInfo n : list) {
+            if (n == node) return true;
+        }
+        return false;
     }
 
     public static List<AccessibilityNodeInfo> findAll(Criteria c) {
         List<AccessibilityNodeInfo> result = new ArrayList<>();
         AutoAccessibilityService service = AutoAccessibilityService.get();
         if (service == null) return result;
+        // 与 findFirst 保持一致：活动窗口 + 全部分屏/悬浮窗
+        List<AccessibilityNodeInfo> roots = new ArrayList<>();
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
-        if (root == null) return result;
+        if (root != null) roots.add(root);
+        if (Build.VERSION.SDK_INT >= 21) {
+            for (android.view.accessibility.AccessibilityWindowInfo w : service.getWindows()) {
+                AccessibilityNodeInfo r = w.getRoot();
+                if (r != null && !containsRef(roots, r)) roots.add(r);
+            }
+        }
         Deque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
-        queue.add(root);
+        queue.addAll(roots);
         while (!queue.isEmpty()) {
             AccessibilityNodeInfo node = queue.poll();
             if (matches(node, c)) result.add(node);
@@ -65,6 +84,16 @@ public final class UiOperator {
             }
         }
         return result;
+    }
+
+    private static void recycleAll(List<AccessibilityNodeInfo> nodes) {
+        if (Build.VERSION.SDK_INT >= 33) return; // 33+ recycle 为 no-op
+        for (AccessibilityNodeInfo n : nodes) {
+            try {
+                n.recycle();
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private static AccessibilityNodeInfo bfs(AccessibilityNodeInfo root, Criteria c) {
@@ -203,7 +232,11 @@ public final class UiOperator {
                             }
                         }
                     });
-            return queue.take();
+            // 回调异常时不让脚本线程永久挂起
+            return queue.poll(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // 保留停止信号给上层判断
+            return null;
         } catch (Exception e) {
             return null;
         }

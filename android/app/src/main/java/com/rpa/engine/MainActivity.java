@@ -48,6 +48,11 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "请填写完整的服务器地址、设备编号与密钥", Toast.LENGTH_SHORT).show();
                 return;
             }
+            // 提前拦截非法地址，避免重连循环中反复崩溃
+            if (!server.startsWith("http://") && !server.startsWith("https://")) {
+                Toast.makeText(this, "服务器地址需以 http:// 或 https:// 开头", Toast.LENGTH_SHORT).show();
+                return;
+            }
             Prefs.save(this, server, sn, secret);
             if (Build.VERSION.SDK_INT >= 33) {
                 requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
@@ -66,6 +71,14 @@ public class MainActivity extends Activity {
         if (AutoAccessibilityService.isRunning()) {
             btnAcc.setText("无障碍服务已开启");
             btnAcc.setEnabled(false);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 1 && (grantResults.length == 0 || grantResults[0] != 0)) {
+            Toast.makeText(this, "未授予通知权限，引擎将在后台静默运行", Toast.LENGTH_LONG).show();
         }
     }
 

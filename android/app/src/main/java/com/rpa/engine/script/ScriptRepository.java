@@ -18,6 +18,8 @@ import java.util.List;
 public class ScriptRepository {
     private final Context context;
     private final ScriptDownloader downloader;
+    // CMD_UPDATE_SCRIPT 安装线程与 CMD_START 执行线程可能并发安装同一版本，串行化防止目录损坏
+    private final Object installLock = new Object();
 
     public ScriptRepository(Context context) {
         this.context = context;
@@ -74,14 +76,16 @@ public class ScriptRepository {
     /** Ensures the exact version exists locally; downloads and installs when missing. */
     public void ensureInstalled(long scriptId, int versionCode, String relativeUrl, String md5,
                                 String baseUrl, String sn, String secret) throws IOException {
-        if (verifyLocal(scriptId, versionCode, md5)) return;
-        byte[] zip = downloader.download(baseUrl, relativeUrl, sn, secret);
-        String actual = ScriptDownloader.md5Hex(zip);
-        if (md5 != null && !md5.equalsIgnoreCase(actual)) {
-            throw new IOException("md5 校验失败: 期望 " + md5 + " 实际 " + actual);
+        synchronized (installLock) {
+            if (verifyLocal(scriptId, versionCode, md5)) return;
+            byte[] zip = downloader.download(baseUrl, relativeUrl, sn, secret);
+            String actual = ScriptDownloader.md5Hex(zip);
+            if (md5 != null && !md5.equalsIgnoreCase(actual)) {
+                throw new IOException("md5 校验失败: 期望 " + md5 + " 实际 " + actual);
+            }
+            ScriptDownloader.unzip(zip, scriptDir(scriptId, versionCode));
+            writeText(new File(scriptDir(scriptId, versionCode), ".md5"), actual);
         }
-        ScriptDownloader.unzip(zip, scriptDir(scriptId, versionCode));
-        writeText(new File(scriptDir(scriptId, versionCode), ".md5"), actual);
     }
 
     private boolean verifyLocal(long scriptId, int versionCode, String md5) {

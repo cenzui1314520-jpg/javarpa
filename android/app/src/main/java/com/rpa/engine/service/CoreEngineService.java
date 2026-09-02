@@ -49,7 +49,9 @@ public class CoreEngineService extends Service {
         i.setPackage(getPackageName());
         i.putExtra("status", status);
         sendBroadcast(i);
-        startForeground(1, buildNotification(status));
+        // 状态刷新用 notify；反复 startForeground 部分机型有额外开销
+        android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
+        if (nm != null) nm.notify(1, buildNotification(status));
     }
 
     private Notification buildNotification(String text) {

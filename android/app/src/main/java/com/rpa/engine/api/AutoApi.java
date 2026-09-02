@@ -29,6 +29,27 @@ public class AutoApi {
         return new ImageApi(bmp, dir);
     }
 
+    /** 读取脚本包内文本资源（如 res/words.txt），路径不得越出包目录。 */
+    public String readText(String relPath) throws java.io.IOException {
+        if (baseDir == null) return null;
+        File f = new File(baseDir, relPath);
+        String canonical = f.getCanonicalPath();
+        String base = baseDir.getCanonicalPath();
+        if (!canonical.startsWith(base + File.separator) && !canonical.equals(base)) {
+            throw new java.io.IOException("路径越界: " + relPath);
+        }
+        if (!f.exists()) return null;
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            byte[] buffer = new byte[8192];
+            int n;
+            while ((n = in.read(buffer)) > 0) {
+                bos.write(buffer, 0, n);
+            }
+        }
+        return new String(bos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     // ---------- selectors ----------
     public SelectorApi text(String text) {
         return new SelectorApi().text(text);

@@ -15,8 +15,12 @@ import org.json.JSONObject;
 import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -36,9 +40,13 @@ public class WsClient implements TaskExecutor.Reporter {
             .build();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Random random = new Random();
+    // 单线程串行处理启停类指令，避免阻塞 WS 读线程（旧任务 join 最长 3s）
+    private final ExecutorService dispatchExecutor = Executors.newSingleThreadExecutor(
+            r -> new Thread(r, "rpa-dispatch"));
 
     private volatile WebSocket socket;
-    private Timer heartbeatTimer;
+    private volatile boolean connected;
+    private Timer heartbeatTimer; // guarded by this
     private volatile boolean closed;
     private volatile int reconnectAttempts = 0;
 
@@ -59,19 +67,29 @@ public class WsClient implements TaskExecutor.Reporter {
         if (closed) return;
         String server = Prefs.serverUrl(context);
         String wsUrl = server.replaceFirst("^http", "ws").replaceAll("/+$", "") + "/ws/device";
-        Request request = new Request.Builder()
-                .url(wsUrl)
-                .header("X-Device-Id", Prefs.deviceSn(context))
-                .header("X-Device-Secret", Prefs.secret(context))
-                .build();
-        status("连接中...");
-        socket = client.newWebSocket(request, listener);
+        try {
+            HttpUrl url = HttpUrl.parse(wsUrl);
+            if (url == null) {
+                throw new IllegalArgumentException("服务器地址非法: " + server);
+            }
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("X-Device-Id", Prefs.deviceSn(context))
+                    .header("X-Device-Secret", Prefs.secret(context))
+                    .build();
+            status("连接中...");
+            socket = client.newWebSocket(request, listener);
+        } catch (Exception e) {
+            status("连接失败: " + e.getMessage());
+            scheduleReconnect();
+        }
     }
 
     private final WebSocketListener listener = new WebSocketListener() {
         @Override
         public void onOpen(WebSocket webSocket, Response response) {
             reconnectAttempts = 0;
+            connected = true;
             status("已连接");
             sendRegister();
             taskExecutor.onConnected();
@@ -85,6 +103,8 @@ public class WsClient implements TaskExecutor.Reporter {
 
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+            connected = false;
+            socket = null;
             status("连接断开: " + t.getMessage());
             stopHeartbeat();
             scheduleReconnect();
@@ -92,6 +112,8 @@ public class WsClient implements TaskExecutor.Reporter {
 
         @Override
         public void onClosed(WebSocket webSocket, int code, String reason) {
+            connected = false;
+            socket = null;
             status("连接关闭");
             stopHeartbeat();
             scheduleReconnect();
@@ -105,9 +127,11 @@ public class WsClient implements TaskExecutor.Reporter {
             String msgId = msg.optString("msgId");
             JSONObject data = msg.optJSONObject("data");
             if (data == null) data = new JSONObject();
+            final JSONObject payload = data;
             switch (type) {
                 case "CMD_START":
-                    taskExecutor.start(data);
+                    // 启停指令含旧任务 join（最长 3s），放调度线程避免阻塞 WS 读循环
+                    dispatchExecutor.execute(() -> taskExecutor.start(payload));
                     ack(msgId, true, null);
                     break;
                 case "CMD_PAUSE":
@@ -128,7 +152,8 @@ public class WsClient implements TaskExecutor.Reporter {
                 default:
                     break;
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            android.util.Log.w("WsClient", "handle message failed: " + text, e);
         }
     }
 
@@ -180,7 +205,8 @@ public class WsClient implements TaskExecutor.Reporter {
         }
     }
 
-    private void startHeartbeat() {
+    // onOpen/onFailure/onClosed 运行在不同 OkHttp 回调线程，加锁防重复心跳
+    private synchronized void startHeartbeat() {
         stopHeartbeat();
         heartbeatTimer = new Timer("rpa-heartbeat");
         heartbeatTimer.schedule(new TimerTask() {
@@ -191,7 +217,7 @@ public class WsClient implements TaskExecutor.Reporter {
         }, HEARTBEAT_MS, HEARTBEAT_MS);
     }
 
-    private void stopHeartbeat() {
+    private synchronized void stopHeartbeat() {
         if (heartbeatTimer != null) {
             heartbeatTimer.cancel();
             heartbeatTimer = null;
@@ -209,22 +235,23 @@ public class WsClient implements TaskExecutor.Reporter {
 
     @Override
     public boolean isConnected() {
-        WebSocket s = socket;
-        return s != null;
+        return connected;
     }
 
     @Override
-    public void send(String type, JSONObject data) {
+    public boolean send(String type, JSONObject data) {
         WebSocket s = socket;
-        if (s == null) return;
+        if (s == null || !connected) return false;
         try {
             JSONObject envelope = new JSONObject();
             envelope.put("type", type);
             envelope.put("msgId", java.util.UUID.randomUUID().toString());
             envelope.put("ts", System.currentTimeMillis());
             envelope.put("data", data);
-            s.send(envelope.toString());
-        } catch (Exception ignored) {
+            return s.send(envelope.toString());
+        } catch (Exception e) {
+            android.util.Log.w("WsClient", "send " + type + " failed", e);
+            return false;
         }
     }
 
@@ -248,7 +275,9 @@ public class WsClient implements TaskExecutor.Reporter {
 
     public void close() {
         closed = true;
+        connected = false;
         stopHeartbeat();
+        dispatchExecutor.shutdownNow();
         WebSocket s = socket;
         if (s != null) {
             s.close(1000, "bye");

@@ -45,7 +45,7 @@ public class ImageApi {
     /** Saves this screenshot as PNG under the script package dir. */
     public boolean save(String relPath) {
         try {
-            File out = new File(baseDir, relPath);
+            File out = resolveInBase(relPath);
             if (out.getParentFile() != null) out.getParentFile().mkdirs();
             Bitmap bmp = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888);
             try (FileOutputStream fos = new FileOutputStream(out)) {
@@ -61,8 +61,8 @@ public class ImageApi {
 
     /** Finds first pixel close to colorHex ("#RRGGBB") within threshold. */
     public Map<String, Integer> findColor(String colorHex, int threshold) {
-        int target = parseColor(colorHex);
-        if (target == 0) return null;
+        Integer target = parseColor(colorHex);
+        if (target == null) return null;
         int tr = Color.red(target), tg = Color.green(target), tb = Color.blue(target);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -79,7 +79,12 @@ public class ImageApi {
 
     /** Template match against an image inside the script package (e.g. "res/btn.png"). */
     public Map<String, Integer> findImage(String relPath, int threshold) {
-        Bitmap tpl = BitmapFactory.decodeFile(new File(baseDir, relPath).getAbsolutePath());
+        Bitmap tpl;
+        try {
+            tpl = BitmapFactory.decodeFile(resolveInBase(relPath).getAbsolutePath());
+        } catch (java.io.IOException e) {
+            return null;
+        }
         if (tpl == null) return null;
         int tw = tpl.getWidth(), th = tpl.getHeight();
         if (tw == 0 || th == 0 || tw > width || th > height) {
@@ -120,14 +125,26 @@ public class ImageApi {
                 && Math.abs(Color.blue(a) - Color.blue(b)) <= threshold;
     }
 
-    private static int parseColor(String hex) {
+    /** @return null 表示非法颜色；纯黑(#000000)是合法目标色，不能用 0 当失败哨兵 */
+    private static Integer parseColor(String hex) {
         try {
             String h = hex.startsWith("#") ? hex.substring(1) : hex;
             if (h.length() == 6) return Color.parseColor("#" + h);
             if (h.length() == 8) return Color.parseColor("#" + h);
         } catch (Exception ignored) {
         }
-        return 0;
+        return null;
+    }
+
+    /** 相对路径必须落在脚本包目录内，防止 ../ 越界读写。 */
+    private File resolveInBase(String relPath) throws java.io.IOException {
+        File f = new File(baseDir, relPath);
+        String canonical = f.getCanonicalPath();
+        String base = baseDir.getCanonicalPath();
+        if (!canonical.startsWith(base + File.separator) && !canonical.equals(base)) {
+            throw new java.io.IOException("路径越界: " + relPath);
+        }
+        return f;
     }
 
     private static Map<String, Integer> point(int x, int y) {

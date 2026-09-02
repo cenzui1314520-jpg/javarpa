@@ -21,7 +21,11 @@ public class ScriptDownloader {
     private static final int TIMEOUT_MS = 30_000;
 
     private final Context context;
-    private final OkHttpClient client = new OkHttpClient();
+    private final OkHttpClient client = new OkHttpClient.Builder()
+            .connectTimeout(TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .readTimeout(TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .callTimeout(TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .build();
 
     public ScriptDownloader(Context context) {
         this.context = context;
@@ -59,36 +63,42 @@ public class ScriptDownloader {
     /** Extracts zip into target dir, guarding against zip-slip path traversal. */
     public static void unzip(byte[] zipBytes, File targetDir) throws IOException {
         File staging = new File(targetDir.getParentFile(),
-                targetDir.getName() + ".staging_" + System.currentTimeMillis());
-        if (!staging.mkdirs() && !staging.exists()) {
-            throw new IOException("无法创建解压目录");
-        }
-        try (ZipInputStream zis = new ZipInputStream(new java.io.ByteArrayInputStream(zipBytes))) {
-            ZipEntry entry;
-            byte[] buffer = new byte[8192];
-            while ((entry = zis.getNextEntry()) != null) {
-                File out = new File(staging, entry.getName());
-                String canonical = out.getCanonicalPath();
-                if (!canonical.startsWith(staging.getCanonicalPath() + File.separator)
-                        && !canonical.equals(staging.getCanonicalPath())) {
-                    throw new IOException("非法的 zip 条目: " + entry.getName());
-                }
-                if (entry.isDirectory()) {
-                    out.mkdirs();
-                    continue;
-                }
-                out.getParentFile().mkdirs();
-                try (FileOutputStream fos = new FileOutputStream(out)) {
-                    int n;
-                    while ((n = zis.read(buffer)) > 0) {
-                        fos.write(buffer, 0, n);
+                targetDir.getName() + ".staging_" + System.currentTimeMillis()
+                        + "_" + java.util.concurrent.ThreadLocalRandom.current().nextInt(10000));
+        try {
+            if (!staging.mkdirs() && !staging.exists()) {
+                throw new IOException("无法创建解压目录");
+            }
+            try (ZipInputStream zis = new ZipInputStream(new java.io.ByteArrayInputStream(zipBytes))) {
+                ZipEntry entry;
+                byte[] buffer = new byte[8192];
+                while ((entry = zis.getNextEntry()) != null) {
+                    File out = new File(staging, entry.getName());
+                    String canonical = out.getCanonicalPath();
+                    if (!canonical.startsWith(staging.getCanonicalPath() + File.separator)
+                            && !canonical.equals(staging.getCanonicalPath())) {
+                        throw new IOException("非法的 zip 条目: " + entry.getName());
+                    }
+                    if (entry.isDirectory()) {
+                        out.mkdirs();
+                        continue;
+                    }
+                    out.getParentFile().mkdirs();
+                    try (FileOutputStream fos = new FileOutputStream(out)) {
+                        int n;
+                        while ((n = zis.read(buffer)) > 0) {
+                            fos.write(buffer, 0, n);
+                        }
                     }
                 }
             }
-        }
-        deleteRecursive(targetDir);
-        if (!staging.renameTo(targetDir)) {
-            throw new IOException("脚本目录替换失败");
+            deleteRecursive(targetDir);
+            if (!staging.renameTo(targetDir)) {
+                throw new IOException("脚本目录替换失败");
+            }
+        } catch (IOException e) {
+            deleteRecursive(staging); // 失败时清掉半成品，避免残留占位目录
+            throw e;
         }
     }
 
