@@ -95,7 +95,8 @@ public class RedisQueueService {
         try {
             return MAPPER.writeValueAsString(msg);
         } catch (Exception e) {
-            return "";
+            // 返回 "" 会被 nackPending 推入队列成为毒消息，卡死后续 drain，必须抛出让外层记录
+            throw new IllegalStateException("WsMessage 序列化失败", e);
         }
     }
 }

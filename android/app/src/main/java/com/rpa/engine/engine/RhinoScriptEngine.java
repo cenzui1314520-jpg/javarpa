@@ -71,7 +71,8 @@ public class RhinoScriptEngine {
             try {
                 params = new JSONObject(paramsJson == null ? "{}" : paramsJson).toString();
             } catch (Exception e) {
-                params = "{}";
+                // 静默换成 "{} 会让脚本拿空参数跑完还报 SUCCESS，必须让任务 FAILED 并带出原因
+                throw new IllegalArgumentException("任务 params 不是合法 JSON: " + paramsJson, e);
             }
             cx.evaluateString(scope, "var params = " + params + ";", "params", 1, null);
             cx.evaluateString(scope, source, "main.js", 1, null);

@@ -38,7 +38,9 @@ final class KeystoreCrypto {
             System.arraycopy(ct, 0, out, iv.length, ct.length);
             return PREFIX + Base64.encodeToString(out, Base64.NO_WRAP);
         } catch (Exception e) {
-            return null; // Keystore 异常时调用方降级明文，保证功能可用
+            // Keystore 异常时调用方降级明文，保证功能可用；但必须留痕，否则密文落盘原因无从排查
+            android.util.Log.w("KeystoreCrypto", "encrypt failed, fallback to plaintext", e);
+            return null;
         }
     }
 
@@ -51,6 +53,8 @@ final class KeystoreCrypto {
             byte[] plain = cipher.doFinal(all, 12, all.length - 12);
             return new String(plain, java.nio.charset.StandardCharsets.UTF_8);
         } catch (Exception e) {
+            // 静默返回 null 会让设备表现为"鉴权失败"，与 Keystore 损坏的真实根因完全脱节
+            android.util.Log.w("KeystoreCrypto", "decrypt failed, key may be invalidated", e);
             return null;
         }
     }
