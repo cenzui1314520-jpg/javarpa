@@ -35,4 +35,8 @@ dependencies {
     // 缺了会在打开相机时 NoClassDefFoundError 闪退，必须显式引入
     implementation("androidx.core:core:1.9.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Shizuku：借 shell 权限一键开启无障碍服务，免手动进系统设置
+    val shizukuVersion = "13.1.5"
+    implementation("dev.rikka.shizuku:api:$shizukuVersion")
+    implementation("dev.rikka.shizuku:provider:$shizukuVersion")
 }

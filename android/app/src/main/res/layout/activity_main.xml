@@ -78,6 +78,13 @@
             android:layout_height="wrap_content"
             android:text="开启无障碍服务" />
 
+        <Button
+            android:id="@+id/btnShizuku"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="一键开启无障碍（Shizuku 授权）" />
+
         <TextView
             android:id="@+id/tvStatus"
             android:layout_width="match_parent"

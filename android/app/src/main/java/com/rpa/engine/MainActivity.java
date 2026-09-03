@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
@@ -17,13 +19,29 @@ import android.widget.Toast;
 
 import com.rpa.engine.accessibility.AutoAccessibilityService;
 import com.rpa.engine.service.CoreEngineService;
+import com.rpa.engine.shizuku.ISettingsSvc;
+import com.rpa.engine.shizuku.SettingsServiceImpl;
 import com.rpa.engine.util.Prefs;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
 import org.json.JSONObject;
 
+import rikka.shizuku.Shizuku;
+
 public class MainActivity extends Activity {
+
+    private static final int REQ_SHIZUKU = 101;
+
+    private final Shizuku.OnRequestPermissionResultListener shizukuPermListener =
+            (requestCode, grantResult) -> {
+                if (requestCode != REQ_SHIZUKU) return;
+                if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                    enableAccessibilityByShell();
+                } else {
+                    toast("未获得 Shizuku 授权");
+                }
+            };
 
     private final BroadcastReceiver statusReceiver = new BroadcastReceiver() {
         @Override
@@ -97,12 +115,111 @@ public class MainActivity extends Activity {
         findViewById(R.id.btnAccessibility).setOnClickListener(v ->
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
 
+        findViewById(R.id.btnShizuku).setOnClickListener(v -> enableAccessibilityViaShizuku());
+
         Button btnAcc = findViewById(R.id.btnAccessibility);
         if (AutoAccessibilityService.isRunning()) {
             btnAcc.setText("无障碍服务已开启");
             btnAcc.setEnabled(false);
+            findViewById(R.id.btnShizuku).setEnabled(false);
         }
         refreshButtons();
+    }
+
+    /** Shizuku 可用则借 shell 权限一键写入 secure 设置开启无障碍，免手动进系统设置。 */
+    private void enableAccessibilityViaShizuku() {
+        try {
+            if (!Shizuku.pingBinder()) {
+                toast("Shizuku 未运行：请先安装 Shizuku 并通过无线调试/ROOT 启动");
+                return;
+            }
+            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                enableAccessibilityByShell();
+                return;
+            }
+            if (Shizuku.shouldShowRequestPermissionRationale()) {
+                toast("上次拒绝了授权，请在 Shizuku 应用里手动允许");
+            }
+            Shizuku.addRequestPermissionResultListener(shizukuPermListener);
+            Shizuku.requestPermission(REQ_SHIZUKU);
+        } catch (Exception e) {
+            toast("Shizuku 不可用: " + e.getMessage());
+        }
+    }
+
+    /** 通过 Shizuku UserService（shell uid）写 secure 设置：读现有服务列表 → 追加自身 → 打开总开关。 */
+    private void enableAccessibilityByShell() {
+        Shizuku.UserServiceArgs args = new Shizuku.UserServiceArgs(
+                new android.content.ComponentName(this, SettingsServiceImpl.class))
+                .daemon(false)
+                .processNameSuffix("settings")
+                .version(1);
+        ServiceConnection conn = new ServiceConnection() {
+            @Override
+            public void onServiceConnected(android.content.ComponentName name,
+                                           android.os.IBinder binder) {
+                runEnableTask(args, this, binder);
+            }
+
+            @Override
+            public void onServiceDisconnected(android.content.ComponentName name) {
+            }
+        };
+        try {
+            Shizuku.bindUserService(args, conn);
+        } catch (Exception e) {
+            toast("Shizuku 服务绑定失败: " + e.getMessage());
+        }
+    }
+
+    private void runEnableTask(Shizuku.UserServiceArgs args, ServiceConnection conn,
+                               android.os.IBinder binder) {
+        new Thread(() -> {
+            String error = null;
+            try {
+                ISettingsSvc settings = ISettingsSvc.Stub.asInterface(binder);
+                String key = "enabled_accessibility_services";
+                String flat = getPackageName() + "/" + AutoAccessibilityService.class.getName();
+                String cur = settings.getSecure(key);
+                // settings get 对未设置的 key 返回字面量 "null"，视作空
+                boolean empty = cur == null || cur.isEmpty() || "null".equals(cur);
+                if (empty || !cur.contains(flat)) {
+                    settings.putSecure(key, empty ? flat : cur + ":" + flat);
+                }
+                settings.putSecure("accessibility_enabled", "1");
+                if (!settings.getSecure(key).contains(flat)) {
+                    error = "写入 secure 设置未生效";
+                }
+            } catch (Exception e) {
+                error = e.getMessage();
+            }
+            try {
+                Shizuku.unbindUserService(args, conn, true);
+            } catch (Exception ignored) {
+            }
+            final String err = error;
+            runOnUiThread(() -> {
+                if (err == null) {
+                    toast("无障碍服务已开启");
+                    refreshAccessibilityButtons();
+                } else {
+                    toast("开启失败: " + err);
+                }
+            });
+        }, "rpa-shizuku").start();
+    }
+
+    private void refreshAccessibilityButtons() {
+        Button btnAcc = findViewById(R.id.btnAccessibility);
+        if (AutoAccessibilityService.isRunning()) {
+            btnAcc.setText("无障碍服务已开启");
+            btnAcc.setEnabled(false);
+            findViewById(R.id.btnShizuku).setEnabled(false);
+        }
+    }
+
+    private void toast(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
     }
 
     @Override
@@ -170,6 +287,7 @@ public class MainActivity extends Activity {
         if (AutoAccessibilityService.isRunning()) {
             btnAcc.setText("无障碍服务已开启");
             btnAcc.setEnabled(false);
+            findViewById(R.id.btnShizuku).setEnabled(false);
         }
         refreshButtons();
     }
@@ -178,5 +296,9 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         unregisterReceiver(statusReceiver);
+        try {
+            Shizuku.removeRequestPermissionResultListener(shizukuPermListener);
+        } catch (Exception ignored) {
+        }
     }
 }

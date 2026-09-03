@@ -14,3 +14,8 @@
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -keepattributes Signature, InnerClasses, EnclosingMethod, *Annotation*
+
+# Shizuku：binder IPC 依赖反射与接口存根，收缩会破坏绑定
+-keep class rikka.shizuku.** { *; }
+-dontwarn rikka.shizuku.**
+-keep class com.rpa.engine.shizuku.** { *; }
