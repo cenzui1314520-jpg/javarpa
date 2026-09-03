@@ -21,10 +21,17 @@ public class CoreEngineService extends Service {
 
     private WsClient wsClient;
     private TaskExecutor taskExecutor;
+    // 供 MainActivity 判断按钮可用性；onCreate/onDestroy 维护，不依赖已废弃的 getRunningServices
+    private static volatile boolean running;
+
+    public static boolean isRunning() {
+        return running;
+    }
 
     @Override
     public void onCreate() {
         super.onCreate();
+        running = true;
         startForeground(1, buildNotification("引擎运行中"));
     }
 
@@ -52,6 +59,10 @@ public class CoreEngineService extends Service {
         // 状态刷新用 notify；反复 startForeground 部分机型有额外开销
         android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
         if (nm != null) nm.notify(1, buildNotification(status));
+        // 鉴权失败是终态：凭据错误重连不可能成功，直接停止引擎（不再是"启动成功"状态）
+        if (status.startsWith("鉴权失败")) {
+            stopSelf();
+        }
     }
 
     private Notification buildNotification(String text) {
@@ -68,6 +79,7 @@ public class CoreEngineService extends Service {
 
     @Override
     public void onDestroy() {
+        running = false;
         if (wsClient != null) wsClient.close();
         // 只发停止信号不在主线程 join（旧实现最长卡 2s 可致 ANR），线程靠观察器自行退出
         if (taskExecutor != null) taskExecutor.shutdown();

@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.widget.Button;
@@ -29,8 +30,19 @@ public class MainActivity extends Activity {
         public void onReceive(Context context, Intent intent) {
             TextView tv = findViewById(R.id.tvStatus);
             tv.setText(intent.getStringExtra("status"));
+            refreshButtons();
+            // 鉴权失败时服务在广播后才 stopSelf，延迟复核一次按钮状态
+            new android.os.Handler(Looper.getMainLooper())
+                    .postDelayed(() -> refreshButtons(), 600);
         }
     };
+
+    /** 引擎运行中：禁用启动、可用停止；反之亦然。 */
+    private void refreshButtons() {
+        boolean running = CoreEngineService.isRunning();
+        findViewById(R.id.btnStart).setEnabled(!running);
+        findViewById(R.id.btnStop).setEnabled(running);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,16 +76,22 @@ public class MainActivity extends Activity {
             // 先停再起：凭据可能已变（如重新扫码），老连接不重启会一直用旧凭据
             CoreEngineService.stop(this);
             CoreEngineService.start(this);
+            refreshButtons();
             Toast.makeText(this, "引擎已启动", Toast.LENGTH_SHORT).show();
         });
 
-        findViewById(R.id.btnStop).setOnClickListener(v ->
-                CoreEngineService.stop(MainActivity.this));
+        findViewById(R.id.btnStop).setOnClickListener(v -> {
+            CoreEngineService.stop(MainActivity.this);
+            // 服务销毁是异步的，延迟刷新按钮状态
+            new android.os.Handler(Looper.getMainLooper())
+                    .postDelayed(this::refreshButtons, 300);
+        });
 
         findViewById(R.id.btnScan).setOnClickListener(v ->
                 new IntentIntegrator(this)
                         .setPrompt("对准管理后台「设备配置二维码」")
-                        .setOrientationLocked(false)
+                        // 锁定方向，走 manifest 里覆盖声明的竖屏
+                        .setOrientationLocked(true)
                         .initiateScan());
 
         findViewById(R.id.btnAccessibility).setOnClickListener(v ->
@@ -84,6 +102,7 @@ public class MainActivity extends Activity {
             btnAcc.setText("无障碍服务已开启");
             btnAcc.setEnabled(false);
         }
+        refreshButtons();
     }
 
     @Override
@@ -116,7 +135,15 @@ public class MainActivity extends Activity {
             ((EditText) findViewById(R.id.etServer)).setText(server);
             ((EditText) findViewById(R.id.etDeviceSn)).setText(sn);
             ((EditText) findViewById(R.id.etSecret)).setText(secret);
-            Toast.makeText(this, "已填入 " + sn + " 的配置，请点击「保存并启动引擎」", Toast.LENGTH_LONG).show();
+            // 引擎在跑时旧凭据已失效，直接停掉等用户确认新配置后重新启动
+            if (CoreEngineService.isRunning()) {
+                CoreEngineService.stop(this);
+                new android.os.Handler(Looper.getMainLooper())
+                        .postDelayed(this::refreshButtons, 300);
+                Toast.makeText(this, "已填入 " + sn + " 的新配置（旧引擎已停止），请点击「保存并启动引擎」", Toast.LENGTH_LONG).show();
+            } else {
+                Toast.makeText(this, "已填入 " + sn + " 的配置，请点击「保存并启动引擎」", Toast.LENGTH_LONG).show();
+            }
         } catch (Exception e) {
             Toast.makeText(this, "二维码内容无法解析", Toast.LENGTH_SHORT).show();
         }
@@ -144,6 +171,7 @@ public class MainActivity extends Activity {
             btnAcc.setText("无障碍服务已开启");
             btnAcc.setEnabled(false);
         }
+        refreshButtons();
     }
 
     @Override
