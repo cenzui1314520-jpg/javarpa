@@ -5,6 +5,8 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
+import com.rpa.engine.accessibility.AutoAccessibilityService;
+import com.rpa.engine.accessibility.UiOperator;
 import com.rpa.engine.script.ScriptRepository;
 import com.rpa.engine.task.TaskExecutor;
 import com.rpa.engine.util.Prefs;
@@ -30,6 +32,9 @@ import okhttp3.WebSocketListener;
 /** Device-side WS client: register, heartbeat, command dispatch, auto reconnect. */
 public class WsClient implements TaskExecutor.Reporter {
     private static final int HEARTBEAT_MS = 30_000;
+    // 调试截图上行规格：720 宽 JPEG 已够人看/定位控件，同时把 base64 控制在 ~100KB 量级
+    private static final int CAPTURE_MAX_WIDTH = 720;
+    private static final int CAPTURE_QUALITY = 60;
 
     private final Context context;
     private final TaskExecutor taskExecutor;
@@ -46,6 +51,9 @@ public class WsClient implements TaskExecutor.Reporter {
     // 脚本包下载安装线程：有界单线程，替代每条命令裸 new Thread
     private final ExecutorService installExecutor = Executors.newSingleThreadExecutor(
             r -> new Thread(r, "rpa-install"));
+    // 调试指令线程：UI 树 dump/截图压缩耗时几十到几百 ms，独立于启停调度避免互相阻塞
+    private final ExecutorService debugExecutor = Executors.newSingleThreadExecutor(
+            r -> new Thread(r, "rpa-debug"));
 
     private volatile WebSocket socket;
     private volatile boolean connected;
@@ -165,6 +173,12 @@ public class WsClient implements TaskExecutor.Reporter {
                 case "CMD_UPDATE_SCRIPT":
                     installScript(msgId, data);
                     break;
+                case "CMD_DUMP_UI":
+                    debugExecutor.execute(() -> handleDumpUi(msgId));
+                    break;
+                case "CMD_CAPTURE":
+                    debugExecutor.execute(() -> handleCapture(msgId));
+                    break;
                 default:
                     break;
             }
@@ -190,6 +204,39 @@ public class WsClient implements TaskExecutor.Reporter {
             }
             ack(msgId, error == null, error);
         });
+    }
+
+    /** 调试指令：dump 控件树后上行 DUMP_UI，ACK 按真实结果回填。 */
+    private void handleDumpUi(String msgId) {
+        try {
+            if (!AutoAccessibilityService.isRunning()) {
+                ack(msgId, false, "无障碍服务未开启");
+                return;
+            }
+            JSONObject data = new JSONObject();
+            data.put("refMsgId", msgId);
+            data.put("tree", UiOperator.dumpTree());
+            send("DUMP_UI", data);
+            ack(msgId, true, null);
+        } catch (Exception e) {
+            ack(msgId, false, e.getMessage());
+        }
+    }
+
+    /** 调试指令：截图压缩后上行 CAPTURE，失败（如 Android<11）时 ACK 带 reason。 */
+    private void handleCapture(String msgId) {
+        try {
+            JSONObject cap = UiOperator.captureJpeg(CAPTURE_MAX_WIDTH, CAPTURE_QUALITY);
+            if (cap == null) {
+                ack(msgId, false, "截图失败（需 Android 11+ 且无障碍服务运行中）");
+                return;
+            }
+            cap.put("refMsgId", msgId);
+            send("CAPTURE", cap);
+            ack(msgId, true, null);
+        } catch (Exception e) {
+            ack(msgId, false, e.getMessage());
+        }
     }
 
     private void sendRegister() {
@@ -305,6 +352,7 @@ public class WsClient implements TaskExecutor.Reporter {
         stopHeartbeat();
         dispatchExecutor.shutdownNow();
         installExecutor.shutdownNow();
+        debugExecutor.shutdownNow();
         WebSocket s = socket;
         if (s != null) {
             s.close(1000, "bye");

@@ -11,6 +11,7 @@ const router = createRouter({
       children: [
         { path: 'dashboard', component: () => import('../views/Dashboard.vue'), meta: { title: '仪表盘' } },
         { path: 'devices', component: () => import('../views/Devices.vue'), meta: { title: '设备管理' } },
+        { path: 'devices/:id/debug', component: () => import('../views/DeviceDebug.vue'), meta: { title: '设备调试' } },
         { path: 'groups', component: () => import('../views/Groups.vue'), meta: { title: '设备分组' } },
         { path: 'scripts', component: () => import('../views/Scripts.vue'), meta: { title: '脚本管理' } },
         { path: 'scripts/:id', component: () => import('../views/ScriptDetail.vue'), meta: { title: '脚本详情' } },

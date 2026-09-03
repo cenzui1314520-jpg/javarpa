@@ -2,6 +2,7 @@ package com.rpa.server.controller;
 
 import com.rpa.server.common.R;
 import com.rpa.server.entity.Device;
+import com.rpa.server.service.DeviceDebugService;
 import com.rpa.server.service.DeviceService;
 import com.rpa.server.service.TaskControlService;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -22,10 +23,13 @@ import java.util.Map;
 public class DeviceController {
     private final DeviceService deviceService;
     private final TaskControlService taskControlService;
+    private final DeviceDebugService deviceDebugService;
 
-    public DeviceController(DeviceService deviceService, TaskControlService taskControlService) {
+    public DeviceController(DeviceService deviceService, TaskControlService taskControlService,
+                            DeviceDebugService deviceDebugService) {
         this.deviceService = deviceService;
         this.taskControlService = taskControlService;
+        this.deviceDebugService = deviceDebugService;
     }
 
     @RequestMapping("/page")
@@ -85,5 +89,18 @@ public class DeviceController {
         if (action == null) throw new com.rpa.server.common.ApiException("action 不能为空");
         taskControlService.controlDevice(taskId, id, action);
         return R.ok();
+    }
+
+    /** 触发设备 UI 树/截图调试上报（kind=dump|capture），结果经 STOMP /topic/device/{id}/debug 推送。 */
+    @PostMapping("/{id}/debug/{kind}")
+    public R<Void> debugTrigger(@PathVariable long id, @PathVariable String kind) {
+        deviceDebugService.request(id, kind);
+        return R.ok();
+    }
+
+    /** 最近一次调试结果（页面初次打开/MCP 轮询用）；从未上报过时 data 为 null。 */
+    @GetMapping("/{id}/debug/latest")
+    public R<Map<String, Object>> debugLatest(@PathVariable long id, @RequestParam String type) {
+        return R.ok(deviceDebugService.latest(id, type));
     }
 }

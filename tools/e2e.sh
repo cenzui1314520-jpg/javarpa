@@ -94,6 +94,15 @@ echo "$STATS" | $PY "import json,sys;d=json.loads(sys.argv[1])['data'];print('de
 say "7. device page shows online"
 api GET "/devices/page?keyword=MOCK" "$TOKEN" | $PY "import json,sys;d=json.load(sys.stdin)['data']['list'][0];print(d['deviceSn'],'online=',d['online'],'model=',d['model'],'engine=',d['engineVersion'])"
 
+say "8. device debug (UI inspector dump + capture)"
+api POST "/devices/$DEVICE_ID/debug/dump" "$TOKEN" > /dev/null
+api POST "/devices/$DEVICE_ID/debug/capture" "$TOKEN" > /dev/null
+sleep 2
+api GET "/devices/$DEVICE_ID/debug/latest?type=dump" "$TOKEN" | $PY "import json,sys;d=json.load(sys.stdin)['data']['data'];t=d['tree'];print('dump nodeCount=',t['nodeCount'],'roots=',len(t['roots']));assert t['nodeCount']>=4"
+api GET "/devices/$DEVICE_ID/debug/latest?type=capture" "$TOKEN" | $PY "import json,sys;d=json.load(sys.stdin)['data']['data'];print('capture ',d['width'],'x',d['height'],'image base64 chars=',len(d['image']));assert d['width']==1080 and len(d['image'])>100"
+echo "--- mock device log (debug) ---"
+tail -6 /tmp/mock-device.log
+
 kill $MOCK_PID 2>/dev/null || true
 echo
 echo "E2E DONE"

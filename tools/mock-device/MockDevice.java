@@ -1,3 +1,7 @@
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -6,6 +10,7 @@ import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -121,6 +126,31 @@ public class MockDevice {
                 case "CMD_PAUSE" -> { System.out.println("[mock] CMD_PAUSE"); ack(msgId, true, null); }
                 case "CMD_STOP" -> { System.out.println("[mock] CMD_STOP"); ack(msgId, true, null); }
                 case "CMD_RESTART" -> { System.out.println("[mock] CMD_RESTART"); ack(msgId, true, null); }
+                case "CMD_DUMP_UI" -> {
+                    System.out.println("[mock] CMD_DUMP_UI");
+                    ack(msgId, true, null);
+                    send("DUMP_UI", "{\"refMsgId\":\"" + msgId + "\",\"tree\":{\"nodeCount\":4,\"roots\":["
+                            + mockNode("android.widget.FrameLayout", null, "com.mock:id/root", 0, 0, 1080, 2400, false,
+                                mockNode("android.widget.TextView", "Mock Title", "com.mock:id/title", 100, 200, 880, 120, false, null)
+                                + "," + mockNode("android.widget.EditText", "input account", "com.mock:id/input", 100, 1000, 880, 160, false, null)
+                                + "," + mockNode("android.widget.Button", "Login", "com.mock:id/btn_login", 240, 1800, 600, 180, true, null))
+                            + "]}}");
+                    System.out.println("[mock] DUMP_UI sent (4 nodes) ✓");
+                }
+                case "CMD_CAPTURE" -> {
+                    System.out.println("[mock] CMD_CAPTURE");
+                    ack(msgId, true, null);
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            String b64 = mockJpeg();
+                            send("CAPTURE", "{\"refMsgId\":\"" + msgId
+                                    + "\",\"width\":1080,\"height\":2400,\"image\":\"" + b64 + "\"}");
+                            System.out.println("[mock] CAPTURE sent, base64 " + (b64.length() / 1024) + "KB ✓");
+                        } catch (Exception e) {
+                            System.out.println("[mock] capture failed: " + e);
+                        }
+                    });
+                }
                 case "REGISTER_ACK" -> System.out.println("[mock] registered on server ✓");
                 default -> System.out.println("[mock] msg " + type);
             }
@@ -163,6 +193,44 @@ public class MockDevice {
     static void ack(String msgId, boolean ok, String error) {
         String err = error == null ? "" : ",\"error\":\"" + error + "\"";
         send("ACK", "{\"refMsgId\":\"" + msgId + "\",\"ok\":" + ok + err + "}");
+    }
+
+    /** mock 控件节点 JSON；childrenJson 为 null 表示叶子。 */
+    static String mockNode(String cls, String text, String id, int x, int y, int w, int h,
+                           boolean clickable, String childrenJson) {
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"className\":\"").append(cls).append('"');
+        if (text != null) sb.append(",\"text\":\"").append(text).append('"');
+        if (id != null) sb.append(",\"id\":\"").append(id).append('"');
+        sb.append(",\"rect\":{\"x\":").append(x).append(",\"y\":").append(y)
+                .append(",\"w\":").append(w).append(",\"h\":").append(h).append('}');
+        sb.append(",\"clickable\":").append(clickable);
+        sb.append(",\"scrollable\":false,\"enabled\":true,\"visibleToUser\":true");
+        if (childrenJson != null) {
+            sb.append(",\"childCount\":3,\"children\":[").append(childrenJson).append(']');
+        } else {
+            sb.append(",\"childCount\":0,\"children\":[]");
+        }
+        return sb.append('}').toString();
+    }
+
+    /** 生成 720x1600 的 mock 截图 JPEG base64（headless 绘制，与 1080x2400 屏幕等比）。 */
+    static String mockJpeg() throws Exception {
+        BufferedImage bi = new BufferedImage(720, 1600, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = bi.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 720, 1600);
+        g.setColor(Color.DARK_GRAY);
+        g.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 44));
+        g.drawString("JavaRPA MOCK SCREEN", 90, 320);
+        g.setColor(Color.LIGHT_GRAY);
+        g.fillRect(66, 660, 588, 110);
+        g.setColor(new Color(64, 158, 255));
+        g.fillRect(160, 1200, 400, 120);
+        g.dispose();
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(bi, "jpg", bos);
+        return Base64.getEncoder().encodeToString(bos.toByteArray());
     }
 
     static void send(String type, String dataJson) {

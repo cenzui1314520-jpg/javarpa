@@ -29,6 +29,8 @@ task_action(start) ──→ 设备热更新执行
 | `list_devices` | 设备与在线状态 |
 | `list_tasks` / `create_task` / `task_action` / `get_task_detail` | 任务全生命周期 |
 | `get_logs` | 查脚本运行日志（可按设备/任务/级别过滤） |
+| `dump_ui_tree` | **让在线设备 dump 当前控件树**（className/text/id/rect/clickable），写选择器前定位控件用 |
+| `capture_screen` | 让在线设备截屏并保存本地 JPEG，配合控件 rect 坐标核对位置 |
 
 ## 配置
 

@@ -17,6 +17,7 @@
 import readline from 'node:readline';
 import zlib from 'node:zlib';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -262,6 +263,41 @@ async function uploadVersion(scriptId, arg) {
 
 /* ---------------- MCP 工具定义 ---------------- */
 
+/** 触发设备调试上报并轮询最近结果（设备须在线；返回 {type, ts, data}）。 */
+async function debugFetch(deviceId, kind) {
+  const before = await api('GET', `/devices/${deviceId}/debug/latest?type=${kind}`).catch(() => null);
+  const beforeTs = before?.ts || 0;
+  await api('POST', `/devices/${deviceId}/debug/${kind}`);
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 500));
+    const cur = await api('GET', `/devices/${deviceId}/debug/latest?type=${kind}`).catch(() => null);
+    if (cur && cur.ts > beforeTs) return cur;
+  }
+  throw new Error('设备调试上报超时（设备离线，或引擎为不支持调试指令的旧版本）');
+}
+
+/** 控件树转紧凑缩进文本，供 LLM 直接读；行数超限时截断。 */
+function treeToText(roots, maxLines = 600) {
+  const lines = [];
+  const walk = (n, depth) => {
+    if (lines.length >= maxLines) return;
+    const r = n.rect ? ` rect=(${n.rect.x},${n.rect.y} ${n.rect.w}x${n.rect.h})` : '';
+    const flags = [n.clickable ? 'clickable' : '', n.scrollable ? 'scrollable' : '', n.enabled === false ? 'disabled' : '']
+      .filter(Boolean).join(',');
+    const hints = [
+      n.text ? `text="${String(n.text).slice(0, 40)}"` : '',
+      n.id ? `id=${n.id}` : '',
+      n.desc ? `desc="${String(n.desc).slice(0, 30)}"` : '',
+    ].filter(Boolean).join(' ');
+    lines.push(`${'  '.repeat(depth)}- ${(n.className || '?').split('.').pop()} ${hints}${r}${flags ? ' [' + flags + ']' : ''}`);
+    for (const c of n.children || []) walk(c, depth + 1);
+  };
+  for (const r of roots) walk(r, 0);
+  if (lines.length >= maxLines) lines.push('...[节点过多已截断]');
+  return lines.join('\n');
+}
+
 const TOOLS = [
   {
     name: 'get_script_api_docs',
@@ -487,6 +523,42 @@ const TOOLS = [
       const list = (d.list || []).slice().reverse(); // 服务端 id 倒序 -> 正序展示
       if (!list.length) return '暂无日志（设备可能离线，或脚本还没执行到 log()）';
       return list.map(l => `[${l.createdAt}] [${l.level}] ${l.content}`).join('\n');
+    },
+  },
+  {
+    name: 'dump_ui_tree',
+    description: '让在线设备上报当前屏幕的完整控件树（无障碍 dump）：每行一个节点，含 className/text/id/desc/rect(屏幕坐标)/clickable 等属性。写选择器 auto.text()/id() 前先用它定位目标控件。',
+    inputSchema: {
+      type: 'object',
+      required: ['deviceId'],
+      properties: {
+        deviceId: { type: 'number', description: '设备 ID（list_devices 可查）' },
+      },
+    },
+    handler: async (a) => {
+      const cur = await debugFetch(Number(a.deviceId), 'dump');
+      const tree = cur.data?.tree || {};
+      return `nodeCount=${tree.nodeCount ?? 0} 抓取时间=${new Date(cur.ts).toLocaleString('zh-CN')}\n${treeToText(tree.roots || [])}`;
+    },
+  },
+  {
+    name: 'capture_screen',
+    description: '让在线设备截屏（Android 11+ 引擎），保存为本地 JPEG 并返回路径与屏幕尺寸，配合 dump_ui_tree 的 rect 坐标核对控件位置。',
+    inputSchema: {
+      type: 'object',
+      required: ['deviceId'],
+      properties: {
+        deviceId: { type: 'number', description: '设备 ID（list_devices 可查）' },
+      },
+    },
+    handler: async (a) => {
+      const cur = await debugFetch(Number(a.deviceId), 'capture');
+      const d = cur.data || {};
+      if (!d.image) throw new Error('设备未返回截图数据');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'javarpa-debug-'));
+      const file = path.join(dir, `device-${a.deviceId}-capture.jpg`);
+      fs.writeFileSync(file, Buffer.from(d.image, 'base64'));
+      return `已保存: ${file}\n屏幕尺寸: ${d.width}x${d.height}（rect 坐标即此坐标系）`;
     },
   },
 ];

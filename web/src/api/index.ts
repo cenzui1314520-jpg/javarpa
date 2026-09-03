@@ -55,6 +55,29 @@ export const deleteDevice = (id: any) => http.delete(`/devices/${id}`)
 export const resetSecret = (id: any) => http.post<{ secret: string }>(`/devices/${id}/reset-secret`)
 export const deviceCommand = (id: any, data: any) => http.post(`/devices/${id}/command`, data)
 
+// device debug (UI 检查器)
+export interface UiTreeNode {
+  text?: string
+  id?: string
+  desc?: string
+  className?: string
+  rect: { x: number; y: number; w: number; h: number }
+  clickable?: boolean
+  longClickable?: boolean
+  scrollable?: boolean
+  enabled?: boolean
+  visibleToUser?: boolean
+  childCount?: number
+  children?: UiTreeNode[]
+}
+export interface DebugLatest<T = any> { type: string; ts: number; data: T }
+export interface DumpData { tree: { roots: UiTreeNode[]; nodeCount: number } }
+export interface CaptureData { width: number; height: number; image: string }
+export const deviceDebugTrigger = (id: any, kind: 'dump' | 'capture') =>
+  http.post(`/devices/${id}/debug/${kind}`)
+export const deviceDebugLatest = (id: any, type: 'dump' | 'capture') =>
+  http.get<DebugLatest | null>(`/devices/${id}/debug/latest`, { params: { type } })
+
 // groups
 export const listGroups = () => http.get<any>('/groups')
 export const createGroup = (data: any) => http.post<any>('/groups', data)

@@ -2,6 +2,7 @@ package com.rpa.server.ws;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rpa.server.service.DeviceDebugService;
 import com.rpa.server.service.DeviceService;
 import com.rpa.server.service.TaskControlService;
 import org.slf4j.Logger;
@@ -22,13 +23,16 @@ public class DeviceWebSocketHandler extends TextWebSocketHandler {
 
     private final DeviceService deviceService;
     private final TaskControlService taskControlService;
+    private final DeviceDebugService deviceDebugService;
     private final DeviceSessionManager sessionManager;
 
     public DeviceWebSocketHandler(DeviceService deviceService,
                                   TaskControlService taskControlService,
+                                  DeviceDebugService deviceDebugService,
                                   DeviceSessionManager sessionManager) {
         this.deviceService = deviceService;
         this.taskControlService = taskControlService;
+        this.deviceDebugService = deviceDebugService;
         this.sessionManager = sessionManager;
     }
 
@@ -62,6 +66,8 @@ public class DeviceWebSocketHandler extends TextWebSocketHandler {
                 case "HEARTBEAT" -> deviceService.handleHeartbeat(deviceId, msg.data);
                 case "LOG" -> deviceService.handleLog(deviceId, msg.data);
                 case "RESULT" -> taskControlService.handleResult(Long.parseLong(deviceId), msg.data);
+                case "DUMP_UI" -> deviceDebugService.handleUpstream(Long.parseLong(deviceId), "dump", msg.data);
+                case "CAPTURE" -> deviceDebugService.handleUpstream(Long.parseLong(deviceId), "capture", msg.data);
                 case "ACK" -> log.debug("device {} ack {}: ok={}", deviceId,
                         msg.data != null ? msg.data.get("refMsgId") : "?",
                         msg.data != null ? msg.data.get("ok") : "?");

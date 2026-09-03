@@ -30,6 +30,15 @@ public class AdminStompService {
         safeSend("/topic/task/" + taskId + "/status", statusData);
     }
 
+    /** 设备调试上报（UI 树/截图）实时推给管理端 UI 检查器。 */
+    public void pushDeviceDebug(long deviceId, String kind, Map<String, Object> data) {
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", kind);
+        payload.put("ts", System.currentTimeMillis());
+        payload.put("data", data);
+        safeSend("/topic/device/" + deviceId + "/debug", payload);
+    }
+
     private void safeSend(String topic, Object payload) {
         try {
             template.convertAndSend(topic, payload);

@@ -48,8 +48,9 @@
       <el-table-column prop="lastActiveAt" label="最后活跃" width="170">
         <template #default="{ row }">{{ fmt(row.lastActiveAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="330" fixed="right">
         <template #default="{ row }">
+          <el-button size="small" type="primary" plain @click="openDebug(row)">UI 调试</el-button>
           <el-button size="small" @click="openCmd(row)">指令</el-button>
           <el-button size="small" @click="doReset(row)">重置密钥</el-button>
           <el-button size="small" type="danger" @click="doDelete(row)">删除</el-button>
@@ -113,9 +114,12 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
 import { pageDevices, createDevice, deleteDevice, resetSecret, deviceCommand, listGroups, listTasks } from '../api'
+
+const router = useRouter()
 
 const query = reactive({ keyword: '', groupId: undefined as any, online: undefined as any, page: 1, size: 10 })
 const rows = ref<any[]>([])
@@ -202,6 +206,10 @@ const doDelete = async (row: any) => {
 const openCmd = (row: any) => {
   cmdForm.deviceId = row.id
   cmdDlg.value = true
+}
+
+const openDebug = (row: any) => {
+  router.push(`/devices/${row.id}/debug`)
 }
 
 const doCmd = async () => {
