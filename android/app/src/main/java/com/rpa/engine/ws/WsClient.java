@@ -79,14 +79,15 @@ public class WsClient implements TaskExecutor.Reporter {
         String server = Prefs.serverUrl(context);
         String wsUrl = server.replaceFirst("^http", "ws").replaceAll("/+$", "") + "/ws/device";
         try {
-            HttpUrl url = HttpUrl.parse(wsUrl);
-            if (url == null) {
+            // HttpUrl 不支持 ws:// scheme（parse 一律返回 null），合法性校验用原始 http 地址；
+            // ws→http 的转换由 Request.Builder.url(String) 内部完成
+            if (HttpUrl.parse(server.replaceAll("/+$", "")) == null) {
                 // 地址配置错误重连无意义，直接终止并提示用户修正
                 status("服务器地址非法，请检查设置: " + server);
                 return;
             }
             Request request = new Request.Builder()
-                    .url(url)
+                    .url(wsUrl)
                     .header("X-Device-Id", Prefs.deviceSn(context))
                     .header("X-Device-Secret", Prefs.secret(context))
                     .build();
@@ -123,8 +124,14 @@ public class WsClient implements TaskExecutor.Reporter {
             if (webSocket != socket) return;
             connected = false;
             socket = null;
-            status("连接断开: " + t.getMessage());
             stopHeartbeat();
+            // 握手期 HTTP 401/403：凭据错误重连永远不可能成功，明确提示后停止
+            if (response != null && (response.code() == 401 || response.code() == 403)) {
+                status("鉴权失败(HTTP " + response.code()
+                        + ")，请核对设备编号/密钥，或在管理后台重置密钥后重新扫码");
+                return;
+            }
+            status("连接断开: " + t.getMessage());
             scheduleReconnect();
         }
 

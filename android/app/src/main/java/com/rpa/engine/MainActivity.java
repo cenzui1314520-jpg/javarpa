@@ -61,6 +61,8 @@ public class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= 33) {
                 requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
             }
+            // 先停再起：凭据可能已变（如重新扫码），老连接不重启会一直用旧凭据
+            CoreEngineService.stop(this);
             CoreEngineService.start(this);
             Toast.makeText(this, "引擎已启动", Toast.LENGTH_SHORT).show();
         });
