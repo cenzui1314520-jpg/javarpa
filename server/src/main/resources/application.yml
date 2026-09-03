@@ -37,7 +37,8 @@ mybatis-plus:
 rpa:
   jwt-secret: ${RPA_JWT_SECRET:change-me-in-production-0123456789abcdef}
   jwt-expire-hours: 24
-  cors-origins: ${RPA_CORS_ORIGINS:http://localhost:5173,http://localhost:5174}
+  # 调试期默认放行所有来源；生产必须用 RPA_CORS_ORIGINS 收紧为白名单
+  cors-origins: ${RPA_CORS_ORIGINS:*}
   upload-dir: ${RPA_UPLOAD_DIR:./data/scripts}
   heartbeat-timeout-seconds: 90
   offline-scan-seconds: 30

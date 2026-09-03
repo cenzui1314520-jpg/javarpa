@@ -19,8 +19,8 @@ public class WebConfig implements WebMvcConfigurer {
     @Value("${rpa.upload-dir:./data/scripts}")
     private String uploadDir;
 
-    // 逗号分隔的允许来源，默认仅放行本地开发端口；生产用 RPA_CORS_ORIGINS 覆盖
-    @Value("${rpa.cors-origins:http://localhost:5173,http://localhost:5174}")
+    // 调试期默认放行所有来源（*）；生产用 RPA_CORS_ORIGINS 覆盖为逗号分隔白名单
+    @Value("${rpa.cors-origins:*}")
     private String corsOrigins;
 
     public WebConfig(JwtInterceptor jwtInterceptor,
