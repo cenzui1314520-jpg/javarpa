@@ -109,6 +109,8 @@
         <el-button type="primary" @click="doCmd">下发</el-button>
       </template>
     </el-dialog>
+
+    <DeviceQrDialog v-model:visible="qrDlg" :device-sn="qrInfo.deviceSn" :secret="qrInfo.secret" />
   </div>
 </template>
 
@@ -118,6 +120,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
 import { pageDevices, createDevice, deleteDevice, resetSecret, deviceCommand, listGroups, listTasks } from '../api'
+import DeviceQrDialog from '../components/DeviceQrDialog.vue'
 
 const router = useRouter()
 
@@ -167,14 +170,8 @@ const doCreate = async () => {
     submitting.value = false
   }
   dlg.value = false
-  // 一次性密钥先展示再做任何可能失败的请求
-  try {
-    await ElMessageBox.alert(
-      `设备创建成功。设备编号: ${dev.deviceSn}，密钥: ${dev.secret}（仅显示一次，请妥善保存）`,
-      '设备密钥',
-      { confirmButtonText: '已保存' }
-    )
-  } catch { /* 用户关闭弹窗 */ }
+  // 一次性密钥直接以二维码+文本展示，App 扫码即可完成配置
+  openQr(dev.deviceSn, dev.secret)
   load()
 }
 
@@ -185,9 +182,15 @@ const doReset = async (row: any) => {
     return
   }
   const data: any = await resetSecret(row.id)
-  try {
-    await ElMessageBox.alert(`新密钥: ${data.secret}（仅显示一次）`, '重置成功')
-  } catch { /* 用户关闭弹窗 */ }
+  openQr(row.deviceSn, data.secret)
+}
+
+const qrDlg = ref(false)
+const qrInfo = reactive({ deviceSn: '', secret: '' })
+const openQr = (deviceSn: string, secret: string) => {
+  qrInfo.deviceSn = deviceSn
+  qrInfo.secret = secret
+  qrDlg.value = true
 }
 
 const doDelete = async (row: any) => {

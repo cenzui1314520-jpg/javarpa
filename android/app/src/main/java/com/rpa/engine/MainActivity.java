@@ -17,6 +17,10 @@ import android.widget.Toast;
 import com.rpa.engine.accessibility.AutoAccessibilityService;
 import com.rpa.engine.service.CoreEngineService;
 import com.rpa.engine.util.Prefs;
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
+
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
 
@@ -64,6 +68,12 @@ public class MainActivity extends Activity {
         findViewById(R.id.btnStop).setOnClickListener(v ->
                 CoreEngineService.stop(MainActivity.this));
 
+        findViewById(R.id.btnScan).setOnClickListener(v ->
+                new IntentIntegrator(this)
+                        .setPrompt("对准管理后台「设备配置二维码」")
+                        .setOrientationLocked(false)
+                        .initiateScan());
+
         findViewById(R.id.btnAccessibility).setOnClickListener(v ->
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
 
@@ -71,6 +81,42 @@ public class MainActivity extends Activity {
         if (AutoAccessibilityService.isRunning()) {
             btnAcc.setText("无障碍服务已开启");
             btnAcc.setEnabled(false);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+        if (result == null || result.getContents() == null) return; // 用户取消扫码
+        applyQrConfig(result.getContents());
+    }
+
+    /** 解析管理后台生成的配置二维码：{"v":1,"type":"javarpa-device","server","deviceSn","secret"}。 */
+    private void applyQrConfig(String contents) {
+        try {
+            JSONObject cfg = new JSONObject(contents);
+            if (!"javarpa-device".equals(cfg.optString("type"))) {
+                Toast.makeText(this, "不是 JavaRPA 设备配置二维码", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            String server = cfg.optString("server", "").trim();
+            String sn = cfg.optString("deviceSn", "").trim();
+            String secret = cfg.optString("secret", "").trim();
+            if (!server.startsWith("http://") && !server.startsWith("https://")) {
+                Toast.makeText(this, "二维码中的服务器地址非法", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (TextUtils.isEmpty(sn) || TextUtils.isEmpty(secret)) {
+                Toast.makeText(this, "二维码缺少设备编号或密钥", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            ((EditText) findViewById(R.id.etServer)).setText(server);
+            ((EditText) findViewById(R.id.etDeviceSn)).setText(sn);
+            ((EditText) findViewById(R.id.etSecret)).setText(secret);
+            Toast.makeText(this, "已填入 " + sn + " 的配置，请点击「保存并启动引擎」", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "二维码内容无法解析", Toast.LENGTH_SHORT).show();
         }
     }
 

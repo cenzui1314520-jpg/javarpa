@@ -31,4 +31,6 @@ android {
 dependencies {
     implementation("org.mozilla:rhino:1.7.14")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 扫码配置：纯 Java、无 androidx/appcompat 依赖，minSdk 24 与本工程对齐
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }

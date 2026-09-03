@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 扫码配置用； zxing-android-embedded 的 CaptureActivity 运行时自行申请 -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <!-- launchApp 查询任意包的启动 Intent 需要；用精确 queries 代替 QUERY_ALL_PACKAGES -->
     <queries>
         <intent>
