@@ -164,7 +164,10 @@ public class ScriptService {
             while (entries.hasMoreElements()) {
                 ZipEntry e = entries.nextElement();
                 if (e.isDirectory()) continue;
-                byte[] bytes = zip.getInputStream(e).readAllBytes();
+                byte[] bytes;
+                try (var in = zip.getInputStream(e)) {
+                    bytes = in.readAllBytes();
+                }
                 Map<String, Object> m = new java.util.HashMap<>();
                 m.put("name", e.getName());
                 m.put("size", bytes.length);
@@ -216,9 +219,13 @@ public class ScriptService {
                     Enumeration<? extends ZipEntry> entries = zip.entries();
                     while (entries.hasMoreElements()) {
                         ZipEntry e = entries.nextElement();
-                        if (e.isDirectory() || isTextFile(e.getName(), zip.getInputStream(e).readAllBytes())) continue;
+                        byte[] data;
+                        try (var in = zip.getInputStream(e)) {
+                            data = in.readAllBytes();
+                        }
+                        if (e.isDirectory() || isTextFile(e.getName(), data)) continue;
                         zos.putNextEntry(new ZipEntry(e.getName()));
-                        zip.getInputStream(e).transferTo(zos);
+                        zos.write(data);
                         zos.closeEntry();
                     }
                 }
@@ -306,8 +313,11 @@ public class ScriptService {
     }
 
     private Path scriptDir(String pkgName) {
-        return Paths.get(System.getProperty("user.dir"),
-                uploadDir.startsWith("/") ? uploadDir.substring(1) : uploadDir, pkgName);
+        // 绝对路径必须保持绝对，否则与 WebConfig 静态映射(file:/...)的下载目录错位，设备下载 404
+        Path base = uploadDir.startsWith("/")
+                ? Paths.get(uploadDir)
+                : Paths.get(System.getProperty("user.dir"), uploadDir);
+        return base.resolve(pkgName);
     }
 
     /** Zip must contain root main.js + config.json, no path traversal entries. */

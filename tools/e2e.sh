@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # JavaRPA end-to-end test: admin login -> device/script/task setup -> mock device run.
+# 管理员密码须与服务端一致：服务端启动时预设 RPA_ADMIN_PASSWORD=admin123，
+# 或用 E2E_PASSWORD=<真实管理员密码> 覆盖（服务端未预设时密码随机生成，见其启动日志）。
 set -e
 BASE=http://localhost:8080
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

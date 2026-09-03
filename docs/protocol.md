@@ -26,7 +26,7 @@
 
 | type | data 字段 | 说明 |
 |------|-----------|------|
-| REGISTER | deviceName, model, brand, androidVersion, sdkInt, appVersion, engineVersion, installedVersions:[{scriptId, versionCode}] | 连接后第一条消息，上报设备信息与已安装脚本版本 |
+| REGISTER | deviceName, model, brand, androidVersion, sdkInt, appVersion, engineVersion, installedVersions:[{scriptId, versionCode}] | 连接后第一条消息，上报设备信息与已安装脚本版本（须上报**全部**已装版本，多版本共存；云端按"目标版本是否已装"判定是否下发更新，避免回滚后反复重推） |
 | HEARTBEAT | taskId, running, successCount, failCount, battery | 每 30s 一次，running 时携带运行进度 |
 | LOG | taskId, level(INFO/WARN/ERROR), tag, content, logTime | 脚本运行日志，实时上报 |
 | RESULT | taskId, status(RUNNING/SUCCESS/FAILED/STOPPED), successCount, failCount, errorMsg, duration | 任务状态变化及结束时上报 |

@@ -8,7 +8,8 @@
  * 配置(环境变量):
  *   RPA_SERVER_URL     云端地址，默认 http://localhost:8080
  *   RPA_ADMIN_USER     管理员账号，默认 admin
- *   RPA_ADMIN_PASSWORD 管理员密码，默认 admin123（与云端 dev 默认一致）
+ *   RPA_ADMIN_PASSWORD 管理员密码，默认 admin123（须与服务端启动时 RPA_ADMIN_PASSWORD
+ *                      预设值一致；服务端未预设时密码随机生成，见其启动日志）
  *   RPA_DATA_DIR       脚本 zip 落盘目录（读回线上版本用），默认 <repo>/server/data/scripts
  *
  * 用法: node tools/mcp-server/mcp-server.mjs

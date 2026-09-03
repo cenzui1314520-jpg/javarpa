@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260903T025806997Z-90662-e3e699563e4c",
+  "runId": "20260903T025806997Z-90662-e3e699563e4c",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "3ffa5f994e357d920d93dcdf2cbe920eeda6b072",
+  "diffHash": "a7b7e0eb322673b2eafa78457c5743a8281a5fcd0048e79b9e7cc63d6963011c",
+  "rulesVersion": "unavailable",
+  "sessionHash": "9e9e26afcad4ba79eb052058bfe4e7720564e3bad04ff72c9152da3d57c339a6",
+  "reportRef": ".mimosa/reports/task-review-sess_9beab650-3f69-4a44-a07d-951f581d595e-20260903T025806997Z-90662-e3e699563e4c.json",
+  "events": [],
+  "observedFindingIds": [
+    "mimosa-2aa400a41fdcd8735d9649e8"
+  ],
+  "verifiedFiles": [
+    {
+      "file": "server/src/main/java/com/rpa/server/service/ScriptService.java",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "tools/e2e.sh",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "android/app/src/main/java/com/rpa/engine/task/TaskExecutor.java",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "android/app/src/main/java/com/rpa/engine/ws/WsClient.java",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "server/src/main/java/com/rpa/server/ws/RedisQueueService.java",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "server/src/main/java/com/rpa/server/service/DeviceService.java",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "server/src/main/java/com/rpa/server/service/PublishService.java",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "android/app/src/main/java/com/rpa/engine/script/ScriptRepository.java",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-03T02:58:07.170Z"
+}

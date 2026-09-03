@@ -102,14 +102,16 @@ public class TaskExecutor {
         }
     }
 
-    public void start(JSONObject data) {
+    /** 启动任务。返回 null 表示已受理（后续成败经 RESULT 上报）；非 null 为立即失败原因，供 CMD_START ACK 携带。 */
+    public String start(JSONObject data) {
         RunContext rc;
         try {
             rc = new RunContext(data);
         } catch (Exception e) {
+            String reason = "指令参数不完整: " + e.getMessage();
             sendResult(buildResult(data.optLong("taskId", 0), "FAILED",
-                    0, 0, "指令参数不完整: " + e.getMessage(), 0));
-            return;
+                    0, 0, reason, 0));
+            return reason;
         }
         synchronized (lastStartData) {
             lastStartData.put(rc.taskId, data);
@@ -121,6 +123,7 @@ public class TaskExecutor {
         rc.thread = new Thread(() -> runScript(rc), "rpa-task-" + rc.taskId);
         rc.thread.start();
         startWatchdog(rc);
+        return null;
     }
 
     /** 超时未退出的旧线程标记为孤儿并分离，不再阻塞新任务（孤儿靠指令观察器自灭）。 */
@@ -231,18 +234,19 @@ public class TaskExecutor {
         }
     }
 
-    public void restart(JSONObject data) {
+    /** 重启任务。返回值语义同 {@link #start(JSONObject)}。 */
+    public String restart(JSONObject data) {
         long taskId = data.optLong("taskId", 0);
         stop(taskId);
         waitIdle(5000);
         // CMD_RESTART 只携带 taskId，复用设备缓存的最近一次 CMD_START 完整参数
         JSONObject startData = data.has("scriptId") ? data : cachedStartData(taskId);
         if (startData == null) {
-            sendResult(buildResult(taskId, "FAILED", 0, 0,
-                    "无法重启: 设备未缓存该任务的脚本信息", 0));
-            return;
+            String reason = "无法重启: 设备未缓存该任务的脚本信息";
+            sendResult(buildResult(taskId, "FAILED", 0, 0, reason, 0));
+            return reason;
         }
-        start(startData);
+        return start(startData);
     }
 
     private JSONObject cachedStartData(long taskId) {
@@ -294,10 +298,15 @@ public class TaskExecutor {
 
     public void onConnected() {
         synchronized (pendingResults) {
+            Reporter r = reporter;
             while (!pendingResults.isEmpty()) {
-                JSONObject result = pendingResults.poll();
-                Reporter r = reporter;
-                if (r != null) r.send("RESULT", result);
+                if (r == null) return;
+                // 发送失败说明连接又断了：留在队列等下次重连，绝不能丢终态结果
+                if (r.isConnected() && r.send("RESULT", pendingResults.peek())) {
+                    pendingResults.poll();
+                } else {
+                    break;
+                }
             }
         }
     }

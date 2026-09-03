@@ -138,6 +138,8 @@ CREATE TABLE IF NOT EXISTS task_execution (
     KEY idx_device (device_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- device_log 按 taskId 过滤（/logs 与开放接口）依赖该索引；存量库需手动执行:
+-- ALTER TABLE device_log ADD INDEX idx_task (task_id);
 CREATE TABLE IF NOT EXISTS device_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     device_id BIGINT NOT NULL,
@@ -147,7 +149,8 @@ CREATE TABLE IF NOT EXISTS device_log (
     content VARCHAR(2000),
     log_time DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    KEY idx_device_time (device_id, created_at)
+    KEY idx_device_time (device_id, created_at),
+    KEY idx_task (task_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS stats_daily (

@@ -39,7 +39,9 @@ docker compose up -d   # MySQL 8 + Redis 7（仅绑定 127.0.0.1；Redis 默认�
 
 ```bash
 cd server
-mvn spring-boot:run -Dspring-boot.run.profiles=dev    # 默认 8080，首次启动自动建表并创建管理员 admin/admin123
+# 首次启动自动建表并创建管理员 admin；密码用 RPA_ADMIN_PASSWORD 预设（本地联调示例），
+# 未预设则随机生成且日志只显示前 4 位（更安全，可用 RPA_ADMIN_PASSWORD 重置环境验证）
+RPA_ADMIN_PASSWORD=admin123 mvn spring-boot:run -Dspring-boot.run.profiles=dev    # 默认 8080
 ```
 
 > 安全约束：未声明 `dev/local/test` profile 时若使用默认 JWT 密钥将**拒绝启动**。

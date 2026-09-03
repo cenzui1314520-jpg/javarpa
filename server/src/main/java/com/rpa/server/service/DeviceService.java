@@ -25,8 +25,10 @@ import org.springframework.web.socket.WebSocketSession;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class DeviceService {
@@ -221,9 +223,14 @@ public class DeviceService {
 
     public void handleRegister(String deviceId, Map<String, Object> data, WebSocketSession session) {
         long id = Long.parseLong(deviceId);
+        Device device = deviceMapper.selectById(id);
         Device upd = new Device();
         upd.id = id;
-        if (data.get("deviceName") != null) upd.name = str(data, "deviceName");
+        // 设备名仅在云端未命名时用上报值补齐，管理员自定义名称不被重连覆盖
+        if ((device == null || device.name == null || device.name.isBlank())
+                && data.get("deviceName") != null) {
+            upd.name = str(data, "deviceName");
+        }
         if (data.get("model") != null) upd.model = str(data, "model");
         if (data.get("brand") != null) upd.brand = str(data, "brand");
         if (data.get("androidVersion") != null) upd.androidVersion = str(data, "androidVersion");
@@ -239,14 +246,13 @@ public class DeviceService {
         ack.put("serverTime", System.currentTimeMillis());
         sessionManager.send(deviceId, WsMessage.of("REGISTER_ACK", ack));
 
-        Device device = deviceMapper.selectById(id);
         if (device != null) {
             pushScriptUpdates(device, data.get("installedVersions"));
         }
         // 先回收上次处理中未确认的命令，再逐条发送并 ACK，发送失败回滚入队防止静默丢失
         redisQueue.recoverProcessing(id);
-        for (WsMessage pending : redisQueue.drainPending(id)) {
-            if (sessionManager.send(deviceId, pending)) {
+        for (RedisQueueService.PendingCommand pending : redisQueue.drainPending(id)) {
+            if (sessionManager.send(deviceId, pending.msg())) {
                 redisQueue.ackPending(id, pending);
             } else {
                 redisQueue.nackPending(id, pending);
@@ -258,12 +264,14 @@ public class DeviceService {
 
     @SuppressWarnings("unchecked")
     private void pushScriptUpdates(Device device, Object installedVersions) {
-        Map<Long, Integer> installed = new HashMap<>();
+        // 设备上报其全部已安装版本；云端判定"目标版本是否已装"，回滚(旧版本重新全量发布)后不再重推
+        Map<Long, Set<Integer>> installed = new HashMap<>();
         if (installedVersions instanceof List<?> list) {
             for (Object o : list) {
                 if (o instanceof Map<?, ?> m && m.get("scriptId") != null) {
-                    installed.put(num((Map<String, Object>) m, "scriptId").longValue(),
-                            num((Map<String, Object>) m, "versionCode").intValue());
+                    installed.computeIfAbsent(num((Map<String, Object>) m, "scriptId").longValue(),
+                            k -> new HashSet<>())
+                            .add(num((Map<String, Object>) m, "versionCode").intValue());
                 }
             }
         }

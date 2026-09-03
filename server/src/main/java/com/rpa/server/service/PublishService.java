@@ -130,8 +130,9 @@ public class PublishService {
         return GrayRule.matches(device.deviceSn, device.groupId, targetType, targetValue, salt);
     }
 
-    /** After device register: compute script updates the device should install. */
-    public List<WsMessage> updatesForDevice(Device device, Map<Long, Integer> installed) {
+    /** After device register: compute script updates the device should install.
+     *  installed 为设备全部已装版本，目标版本已装即跳过（回滚后旧版本仍在设备上，不重推）。 */
+    public List<WsMessage> updatesForDevice(Device device, Map<Long, Set<Integer>> installed) {
         List<WsMessage> updates = new ArrayList<>();
         List<Script> scripts = scriptMapper.selectList(null);
         Set<Long> relevantScriptIds = new HashSet<>(installed.keySet());
@@ -141,8 +142,8 @@ public class PublishService {
         for (Long scriptId : relevantScriptIds) {
             int target = resolveTargetVersion(scriptId, device);
             if (target <= 0) continue;
-            Integer has = installed.get(scriptId);
-            if (has != null && has == target) continue;
+            Set<Integer> has = installed.get(scriptId);
+            if (has != null && has.contains(target)) continue;
             ScriptVersion version = versionMapper.selectOne(new QueryWrapper<ScriptVersion>()
                     .eq("script_id", scriptId).eq("version_code", target).last("LIMIT 1"));
             if (version != null) updates.add(updateMessage(scriptId, version));

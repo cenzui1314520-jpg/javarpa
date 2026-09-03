@@ -45,13 +45,11 @@ public class ScriptRepository {
             if (versions == null) continue;
             for (File v : versions) {
                 try {
-                    long scriptId = Long.parseLong(dir.getName());
-                    int versionCode = Integer.parseInt(v.getName());
                     JSONObject o = new JSONObject();
-                    o.put("scriptId", scriptId);
-                    o.put("versionCode", versionCode);
+                    o.put("scriptId", Long.parseLong(dir.getName()));
+                    o.put("versionCode", Integer.parseInt(v.getName()));
                     result.add(o);
-                } catch (Exception ignored) {
+                } catch (NumberFormatException ignored) {
                 }
             }
         }

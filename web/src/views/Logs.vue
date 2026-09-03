@@ -7,7 +7,7 @@
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-select v-model="query.level" placeholder="全部级别" clearable style="width: 120px" :disabled="live" @change="search">
+        <el-select v-model="query.level" placeholder="全部级别" clearable style="width: 120px" @change="onLevelChange">
           <el-option label="INFO" value="INFO" />
           <el-option label="WARN" value="WARN" />
           <el-option label="ERROR" value="ERROR" />
@@ -96,12 +96,23 @@ const resubscribe = () => {
   if (!live.value || !query.deviceId) return
   unsubscribe()
   sub = subscribe(`/topic/device/${query.deviceId}/logs`, (body: any) => {
+    // 实时推送同样按已选级别过滤，与查询口径一致
+    if (query.level && (body.level || 'INFO') !== query.level) return
     rows.value.unshift({
       id: Date.now(), deviceId: body.deviceId, taskId: body.taskId,
       level: body.level || 'INFO', content: body.content, logTime: new Date().toISOString()
     })
     if (rows.value.length > 300) rows.value.pop()
   })
+}
+
+// 实时模式下切换级别：清掉旧数据避免新旧口径混杂；非实时走正常查询
+const onLevelChange = () => {
+  if (live.value) {
+    rows.value = []
+  } else {
+    search()
+  }
 }
 
 watch(live, on => {

@@ -1,0 +1,334 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20260903T025806997Z-90662-e3e699563e4c",
+  "run_status": "completed",
+  "errors": [],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "complete",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": true,
+      "captured_files": 114,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 8
+    },
+    "change_tracking": {
+      "touched_observed": 8,
+      "touched_retained": 8,
+      "truncated": false,
+      "bash_mutation": false,
+      "bash_discovered": 0,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 8,
+      "selected_files": 8,
+      "limit": 20,
+      "truncated": false
+    },
+    "scanning": {
+      "required_files": 8,
+      "scanned_files": 8,
+      "skipped_files": 0,
+      "failed_files": 0,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {},
+    "reasons": [],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-09-03T02:58:06.997Z",
+  "session_id": "sess_9beab650-3f69-4a44-a07d-951f581d595e",
+  "target": ".",
+  "revision": "3ffa5f994e357d920d93dcdf2cbe920eeda6b072",
+  "rules_version": "unavailable",
+  "diff_hash": "a7b7e0eb322673b2eafa78457c5743a8281a5fcd0048e79b9e7cc63d6963011c",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 8,
+    "changed_files": [
+      {
+        "file": "android/app/src/main/java/com/rpa/engine/script/ScriptRepository.java",
+        "ranges": [
+          {
+            "start": 37,
+            "end": 37
+          },
+          {
+            "start": 44,
+            "end": 49
+          },
+          {
+            "start": 52,
+            "end": 52
+          },
+          {
+            "start": 54,
+            "end": 54
+          }
+        ],
+        "before_hash": "94d553524b23c1d6ec9c07fec1dc88a2b8ca1de882c73e3f9d387d9fa2022419",
+        "after_hash": "2e6cbefc3291f6dd084ed91acd84a9f785b69a6f452e3d227cad1ef6d823c88f"
+      },
+      {
+        "file": "android/app/src/main/java/com/rpa/engine/task/TaskExecutor.java",
+        "ranges": [
+          {
+            "start": 105,
+            "end": 106
+          },
+          {
+            "start": 111,
+            "end": 111
+          },
+          {
+            "start": 113,
+            "end": 114
+          },
+          {
+            "start": 126,
+            "end": 126
+          },
+          {
+            "start": 237,
+            "end": 238
+          },
+          {
+            "start": 245,
+            "end": 247
+          },
+          {
+            "start": 249,
+            "end": 249
+          },
+          {
+            "start": 301,
+            "end": 301
+          },
+          {
+            "start": 303,
+            "end": 309
+          }
+        ],
+        "before_hash": "00bdeae31d1f3f708a7094a6ce825fabac88a4b2976c3fc7c1115740474b7a18",
+        "after_hash": "c9d2b47d4c65910a9effb44edc02491a7d2728fd96c33838a17cab6ee7cf2484"
+      },
+      {
+        "file": "android/app/src/main/java/com/rpa/engine/ws/WsClient.java",
+        "ranges": [
+          {
+            "start": 108,
+            "end": 109
+          },
+          {
+            "start": 149,
+            "end": 151
+          },
+          {
+            "start": 163,
+            "end": 163
+          },
+          {
+            "start": 290,
+            "end": 294
+          }
+        ],
+        "before_hash": "2a7be168dd0d139afa8a503357bfd5464dc4aa65363bc2c4b4ed16116b86d0fa",
+        "after_hash": "4d2839b46c8dd73531393a6a29e9ba92e6a72b91665bd7841ebe3a03e356602f"
+      },
+      {
+        "file": "server/src/main/java/com/rpa/server/service/DeviceService.java",
+        "ranges": [
+          {
+            "start": 28,
+            "end": 28
+          },
+          {
+            "start": 31,
+            "end": 31
+          },
+          {
+            "start": 226,
+            "end": 226
+          },
+          {
+            "start": 229,
+            "end": 233
+          },
+          {
+            "start": 254,
+            "end": 255
+          },
+          {
+            "start": 267,
+            "end": 268
+          },
+          {
+            "start": 272,
+            "end": 274
+          }
+        ],
+        "before_hash": "0384058bdcd5dace3334ac77de9f81c52bcc6624ebab90ee5102cfae895c3468",
+        "after_hash": "8dc984d3f41d481867e783695af8f4ecddf31285c75ab3b88b4b89d066dec382"
+      },
+      {
+        "file": "server/src/main/java/com/rpa/server/service/PublishService.java",
+        "ranges": [
+          {
+            "start": 133,
+            "end": 135
+          },
+          {
+            "start": 145,
+            "end": 146
+          }
+        ],
+        "before_hash": "0707287f1deb97a08a2e854c180aa4a0e604602168f54671fa1edd97a6872021",
+        "after_hash": "f5d31a69ad7745e9dae2db8eae0b388bc8b777755591a33848252e737092b648"
+      },
+      {
+        "file": "server/src/main/java/com/rpa/server/service/ScriptService.java",
+        "ranges": [
+          {
+            "start": 167,
+            "end": 170
+          },
+          {
+            "start": 222,
+            "end": 226
+          },
+          {
+            "start": 228,
+            "end": 228
+          },
+          {
+            "start": 316,
+            "end": 320
+          }
+        ],
+        "before_hash": "996542b0440ed2213c663f07b9308b515a1e73a1b1605acd958d521644ab9880",
+        "after_hash": "94dc0c131f4b693c28e1b4ab9462e52c9274be7dc162faf50bad7b90513acce6"
+      },
+      {
+        "file": "server/src/main/java/com/rpa/server/ws/RedisQueueService.java",
+        "ranges": [
+          {
+            "start": 20,
+            "end": 20
+          },
+          {
+            "start": 32,
+            "end": 33
+          },
+          {
+            "start": 49,
+            "end": 49
+          },
+          {
+            "start": 55,
+            "end": 57
+          },
+          {
+            "start": 59,
+            "end": 60
+          },
+          {
+            "start": 71,
+            "end": 75
+          },
+          {
+            "start": 84,
+            "end": 84
+          },
+          {
+            "start": 86,
+            "end": 86
+          },
+          {
+            "start": 93,
+            "end": 93
+          },
+          {
+            "start": 95,
+            "end": 97
+          }
+        ],
+        "before_hash": "bd48ab684cf1ebcf533561fca6897da3308f00987ce6a9345e015240a5746678",
+        "after_hash": "d8cbfeb845e99a094a382e7393ca3405bcbdadb7360399bb559c382e5a717c96"
+      },
+      {
+        "file": "tools/e2e.sh",
+        "ranges": [
+          {
+            "start": 3,
+            "end": 4
+          }
+        ],
+        "before_hash": "bf6c7f71cc56e44a01d21cf5108831a4bebac84cb171c18d489ac8b18cf6b2cd",
+        "after_hash": "8d132787fc7fb5c0f0fe81af9c916a77462be0858494ec1898aeb2c927ae0c4f"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-09-03T02:58:06.500Z",
+    "completed_at": "2026-09-03T02:58:06.997Z",
+    "duration_ms": 497,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "complete",
+    "latencyMs": 497,
+    "peakMemoryBytes": 198475776,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 8,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_9beab650-3f69-4a44-a07d-951f581d595e-20260903T025806997Z-90662-e3e699563e4c.json",
+    "latest_report": ".mimosa/reports/task-review-sess_9beab650-3f69-4a44-a07d-951f581d595e.json",
+    "history_summary": ".mimosa/history/run-20260903T025806997Z-90662-e3e699563e4c.json"
+  }
+}

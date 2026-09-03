@@ -60,7 +60,7 @@ task_action(start) ──→ 设备热更新执行
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `RPA_SERVER_URL` | `http://localhost:8080` | 云端地址 |
-| `RPA_ADMIN_USER` / `RPA_ADMIN_PASSWORD` | `admin` / `admin123` | 管理员账号（JWT 自动登录续期） |
+| `RPA_ADMIN_USER` / `RPA_ADMIN_PASSWORD` | `admin` / `admin123` | 管理员账号（JWT 自动登录续期）。密码须与服务端启动时 `RPA_ADMIN_PASSWORD` 预设值一致；服务端未预设时为随机密码（见其启动日志） |
 | `RPA_DATA_DIR` | `<repo>/server/data/scripts` | 脚本 zip 落盘目录，`read_script_version` 用（需与云端同机） |
 
 ## 典型调试会话示例

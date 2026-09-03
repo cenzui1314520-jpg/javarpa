@@ -105,6 +105,8 @@ public class WsClient implements TaskExecutor.Reporter {
 
         @Override
         public void onMessage(WebSocket webSocket, String text) {
+            // 与 onOpen/onFailure/onClosed 一致：旧连接的迟到消息不得处理，避免重连竞态下重复执行指令
+            if (webSocket != socket) return;
             handleMessage(text);
         }
 
@@ -144,9 +146,9 @@ public class WsClient implements TaskExecutor.Reporter {
             final JSONObject payload = data;
             switch (type) {
                 case "CMD_START":
-                    // 启停指令含旧任务 join（最长 3s），放调度线程避免阻塞 WS 读循环
-                    dispatchExecutor.execute(() -> taskExecutor.start(payload));
-                    ack(msgId, true, null);
+                    // 启停指令含旧任务 join（最长 3s），放调度线程避免阻塞 WS 读循环；
+                    // ACK 在派发执行后按真实受理结果回填，而非收到即回 ok
+                    dispatchExecutor.execute(() -> ack(msgId, taskExecutor.start(payload)));
                     break;
                 case "CMD_PAUSE":
                     taskExecutor.pause(data.optLong("taskId"));
@@ -158,8 +160,7 @@ public class WsClient implements TaskExecutor.Reporter {
                     break;
                 case "CMD_RESTART":
                     // restart 含 waitIdle(5s)，与 start 一样走调度线程串行执行
-                    dispatchExecutor.execute(() -> taskExecutor.restart(payload));
-                    ack(msgId, true, null);
+                    dispatchExecutor.execute(() -> ack(msgId, taskExecutor.restart(payload)));
                     break;
                 case "CMD_UPDATE_SCRIPT":
                     installScript(msgId, data);
@@ -284,6 +285,11 @@ public class WsClient implements TaskExecutor.Reporter {
             send("ACK", data);
         } catch (Exception ignored) {
         }
+    }
+
+    /** error 为 null 视为成功；非 null 时 ACK 失败原因。 */
+    private void ack(String refMsgId, String error) {
+        ack(refMsgId, error == null, error);
     }
 
     private void status(String s) {
