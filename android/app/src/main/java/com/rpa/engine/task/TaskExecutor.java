@@ -57,7 +57,7 @@ public class TaskExecutor {
         final int versionCode;
         final String paramsJson;
         final String url;
-        final String md5;
+        final String sha256;
         final long maxRuntimeMs; // CMD_START 可选下发，0 表示不限
         final long startedAt = System.currentTimeMillis();
         final AutoApi auto = new AutoApi(this);
@@ -72,7 +72,7 @@ public class TaskExecutor {
             this.versionCode = data.getInt("versionCode");
             this.paramsJson = data.optString("params", "{}");
             this.url = data.optString("url", "");
-            this.md5 = data.optString("md5", null);
+            this.sha256 = data.optString("sha256", null);
             this.maxRuntimeMs = Math.max(0, data.optLong("maxRuntimeSec", 0)) * 1000L;
         }
 
@@ -181,7 +181,7 @@ public class TaskExecutor {
         String error = null;
         try {
             String base = Prefs.serverUrl(context);
-            repository.ensureInstalled(rc.scriptId, rc.versionCode, rc.url, rc.md5,
+            repository.ensureInstalled(rc.scriptId, rc.versionCode, rc.url, rc.sha256,
                     base, Prefs.deviceSn(context), Prefs.secret(context));
             String source = repository.readMainJs(rc.scriptId, rc.versionCode);
             engine.execute(source, rc.paramsJson, rc, rc.auto,

@@ -18,7 +18,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="versionName" label="版本名" width="110" />
-        <el-table-column prop="fileMd5" label="MD5" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="fileSha256" label="SHA-256" min-width="300" show-overflow-tooltip />
         <el-table-column prop="fileSize" label="大小" width="90">
           <template #default="{ row }">{{ (row.fileSize / 1024).toFixed(1) }}K</template>
         </el-table-column>

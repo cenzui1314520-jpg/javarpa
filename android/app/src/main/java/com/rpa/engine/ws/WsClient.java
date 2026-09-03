@@ -181,7 +181,7 @@ public class WsClient implements TaskExecutor.Reporter {
                         data.getLong("scriptId"),
                         data.getInt("versionCode"),
                         data.optString("url", ""),
-                        data.optString("md5", null),
+                        data.optString("sha256", null),
                         Prefs.serverUrl(context),
                         Prefs.deviceSn(context),
                         Prefs.secret(context));

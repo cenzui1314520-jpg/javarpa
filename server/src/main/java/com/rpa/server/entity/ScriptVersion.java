@@ -14,7 +14,7 @@ public class ScriptVersion {
     public Integer versionCode;
     public String versionName;
     public String filePath;
-    public String fileMd5;
+    public String fileSha256;
     public Long fileSize;
     public Integer status;
     public String changelog;

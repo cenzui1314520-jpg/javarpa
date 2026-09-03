@@ -38,11 +38,11 @@
 |------|-----------|------|
 | REGISTER_ACK | ok, serverTime | 注册确认，随后可能紧跟补发指令 |
 | HEARTBEAT_ACK | serverTime | 心跳确认 |
-| CMD_START | taskId, scriptId, versionCode, url, md5, params | 启动任务，url 为脚本 zip 下载地址 |
+| CMD_START | taskId, scriptId, versionCode, url, sha256, params | 启动任务，url 为脚本 zip 下载地址 |
 | CMD_PAUSE | taskId | 暂停任务（协作式，脚本阻塞在 auto.waitIfPaused） |
 | CMD_STOP | taskId | 停止任务（中断脚本线程） |
 | CMD_RESTART | taskId | 重启任务（= STOP + START） |
-| CMD_UPDATE_SCRIPT | scriptId, versionCode, url, md5 | 热更新脚本包 |
+| CMD_UPDATE_SCRIPT | scriptId, versionCode, url, sha256 | 热更新脚本包 |
 
 ## 指令可靠性
 
@@ -52,4 +52,4 @@
 
 ## 脚本包规范
 
-zip 包，根目录必须包含 `main.js`（入口）与 `config.json`（元信息：name/version/entry），额外资源文件随包分发。设备按 `scripts/{scriptId}/{versionCode}/` 目录隔离多版本，下载后先校验 md5 再解压安装。
+zip 包，根目录必须包含 `main.js`（入口）与 `config.json`（元信息：name/version/entry），额外资源文件随包分发。设备按 `scripts/{scriptId}/{versionCode}/` 目录隔离多版本，下载后先校验 sha256 再解压安装。

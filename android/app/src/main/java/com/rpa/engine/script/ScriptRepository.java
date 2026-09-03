@@ -64,34 +64,34 @@ public class ScriptRepository {
     }
 
     /** Ensures the exact version exists locally; downloads and installs when missing. */
-    public void ensureInstalled(long scriptId, int versionCode, String relativeUrl, String md5,
+    public void ensureInstalled(long scriptId, int versionCode, String relativeUrl, String sha256,
                                 String baseUrl, String sn, String secret) throws IOException {
         synchronized (installLock) {
-            if (verifyLocal(scriptId, versionCode, md5)) return;
-            if (md5 == null) {
-                // 协议要求携带 md5；缺失说明服务端异常，告警但保持兼容继续安装
+            if (verifyLocal(scriptId, versionCode, sha256)) return;
+            if (sha256 == null) {
+                // 协议要求携带 sha256；缺失说明服务端异常，告警但保持兼容继续安装
                 android.util.Log.w("ScriptRepository",
-                        "CMD_START/CMD_UPDATE_SCRIPT 未携带 md5,跳过完整性校验: script=" + scriptId);
+                        "CMD_START/CMD_UPDATE_SCRIPT 未携带 sha256,跳过完整性校验: script=" + scriptId);
             }
             byte[] zip = downloader.download(baseUrl, relativeUrl, sn, secret);
-            String actual = ScriptDownloader.md5Hex(zip);
-            if (md5 != null && !md5.equalsIgnoreCase(actual)) {
-                throw new IOException("md5 校验失败: 期望 " + md5 + " 实际 " + actual);
+            String actual = ScriptDownloader.sha256Hex(zip);
+            if (sha256 != null && !sha256.equalsIgnoreCase(actual)) {
+                throw new IOException("sha256 校验失败: 期望 " + sha256 + " 实际 " + actual);
             }
             ScriptDownloader.unzip(zip, scriptDir(scriptId, versionCode));
-            writeText(new File(scriptDir(scriptId, versionCode), ".md5"), actual);
+            writeText(new File(scriptDir(scriptId, versionCode), ".sha256"), actual);
         }
     }
 
-    private boolean verifyLocal(long scriptId, int versionCode, String md5) {
+    private boolean verifyLocal(long scriptId, int versionCode, String sha256) {
         File dir = scriptDir(scriptId, versionCode);
         File main = new File(dir, "main.js");
         if (!main.exists()) return false;
-        if (md5 == null) return true;
-        File meta = new File(dir, ".md5");
+        if (sha256 == null) return true;
+        File meta = new File(dir, ".sha256");
         if (!meta.exists()) return false;
         try {
-            return md5.equalsIgnoreCase(readText(meta).trim());
+            return sha256.equalsIgnoreCase(readText(meta).trim());
         } catch (IOException e) {
             return false;
         }

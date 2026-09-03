@@ -111,7 +111,7 @@ public class PublishService {
         data.put("scriptId", scriptId);
         data.put("versionCode", version.versionCode);
         data.put("url", version.filePath);
-        data.put("md5", version.fileMd5);
+        data.put("sha256", version.fileSha256);
         return WsMessage.of("CMD_UPDATE_SCRIPT", data);
     }
 

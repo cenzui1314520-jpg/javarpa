@@ -37,7 +37,7 @@ bash tools/e2e.sh                             # 需先起 server；自动清理�
 
 - **JWT 启动闸门**：未声明 `dev/local/test` profile 且用默认密钥时服务拒绝启动（`JwtUtil.java`）。本地跑 server 必须带 `-Dspring-boot.run.profiles=dev`。生产必须设 `RPA_JWT_SECRET`（≥32 字节）。
 - **配置全走环境变量**：`MYSQL_USER/MYSQL_PASSWORD`、`REDIS_PASSWORD`、`RPA_CORS_ORIGINS`、`MYSQL_SSL` 等，见 `server/src/main/resources/application.yml`。
-- **脚本存储**：上传的脚本 zip 落在 `server/data/`（已 gitignore，运行时生成）。设备端按 `scripts/{scriptId}/{versionCode}/` 多版本共存，下载校验 MD5，解压有 zip-slip 防护——新增文件处理时保持这两道校验。
+- **脚本存储**：上传的脚本 zip 落在 `server/data/`（已 gitignore，运行时生成）。设备端按 `scripts/{scriptId}/{versionCode}/` 多版本共存，下载校验 SHA-256，解压有 zip-slip 防护——新增文件处理时保持这两道校验。
 - **Android release 构建开了 minify + proguard**（防 OkHttp/Rhino 逆向），新增依赖/反射用法需检查 `proguard-rules.pro`。
 - **`.vscode/` 整体被 gitignore**（含本地 `mcp.json`，配置 MCP Server 供 AI 助手 deploy/调试脚本，用法见 `docs/mcp.md`），不要把它当共享配置提交。
 - **上传限制**：脚本包 ≤50MB（multipart 配置），上传 zip 有结构白名单校验。

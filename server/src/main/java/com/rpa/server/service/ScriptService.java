@@ -265,7 +265,7 @@ public class ScriptService {
             Files.write(tmp, zipBytes);
             long size = Files.size(tmp);
             if (size <= 0) throw new ApiException("上传内容为空");
-            String md5 = DigestUtil.md5Hex(tmp);
+            String sha256 = DigestUtil.sha256Hex(tmp);
             validateZip(tmp);
 
             ScriptVersion v = new ScriptVersion();
@@ -273,7 +273,7 @@ public class ScriptService {
             v.versionCode = vc;
             v.versionName = versionName;
             v.filePath = relativePath;
-            v.fileMd5 = md5;
+            v.fileSha256 = sha256;
             v.fileSize = size;
             v.status = 1;
             v.changelog = changelog;

@@ -16,7 +16,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/** Downloads script packages, verifies md5 and installs them in versioned dirs. */
+/** Downloads script packages, verifies sha256 and installs them in versioned dirs. */
 public class ScriptDownloader {
     private static final int TIMEOUT_MS = 30_000;
     // 与服务端 multipart 上限对齐，防 zip bomb / 超大包打爆内存与存储
@@ -65,9 +65,9 @@ public class ScriptDownloader {
         }
     }
 
-    public static String md5Hex(byte[] data) {
+    public static String sha256Hex(byte[] data) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             StringBuilder sb = new StringBuilder();
             for (byte b : md.digest(data)) {
                 sb.append(String.format("%02x", b));

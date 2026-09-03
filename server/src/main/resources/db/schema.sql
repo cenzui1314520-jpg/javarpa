@@ -69,13 +69,16 @@ CREATE TABLE IF NOT EXISTS script (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 校验算法 2026-09 由 MD5 升级为 SHA-256；存量库需手动执行:
+-- ALTER TABLE script_version CHANGE COLUMN file_md5 file_sha256 VARCHAR(64) NOT NULL;
+-- （旧记录内仍是 MD5 值，需重传脚本包后新设备才能校验通过）
 CREATE TABLE IF NOT EXISTS script_version (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     script_id BIGINT NOT NULL,
     version_code INT NOT NULL,
     version_name VARCHAR(32),
     file_path VARCHAR(255) NOT NULL,
-    file_md5 VARCHAR(64) NOT NULL,
+    file_sha256 VARCHAR(64) NOT NULL,
     file_size BIGINT,
     status TINYINT NOT NULL DEFAULT 1,
     changelog VARCHAR(500),

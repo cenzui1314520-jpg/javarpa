@@ -127,7 +127,7 @@ public class TaskControlService {
         data.put("scriptId", script.id);
         data.put("versionCode", versionCode);
         data.put("url", version.filePath);
-        data.put("md5", version.fileMd5);
+        data.put("sha256", version.fileSha256);
         data.put("params", task.paramsJson == null ? Map.of() : parseParams(task.paramsJson));
         return data;
     }

@@ -106,12 +106,12 @@ public class MockDevice {
             switch (type) {
                 case "CMD_UPDATE_SCRIPT" -> {
                     String url = extract(raw, "url");
-                    String md5 = extract(raw, "md5");
+                    String sha256 = extract(raw, "sha256");
                     String actual = downloadAndHash(url);
-                    boolean ok = md5.equalsIgnoreCase(actual);
-                    System.out.println("[mock] UPDATE_SCRIPT url=" + url + " md5Ok=" + ok);
+                    boolean ok = sha256.equalsIgnoreCase(actual);
+                    System.out.println("[mock] UPDATE_SCRIPT url=" + url + " sha256Ok=" + ok);
                     downloadedScript = "v" + extract(raw, "versionCode");
-                    ack(msgId, ok, ok ? null : "md5 mismatch");
+                    ack(msgId, ok, ok ? null : "sha256 mismatch");
                 }
                 case "CMD_START" -> {
                     System.out.println("[mock] CMD_START received, simulating a run...");
@@ -150,10 +150,10 @@ public class MockDevice {
                     .GET().build();
             HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
             if (resp.statusCode() != 200) {
-                // 避免对错误页算 md5 误报 mismatch
+                // 避免对错误页算 sha256 误报 mismatch
                 throw new IllegalStateException("download failed HTTP " + resp.statusCode() + " for " + path);
             }
-            byte[] digest = MessageDigest.getInstance("MD5").digest(resp.body());
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(resp.body());
             StringBuilder sb = new StringBuilder();
             for (byte b : digest) sb.append(String.format("%02x", b));
             return sb.toString();

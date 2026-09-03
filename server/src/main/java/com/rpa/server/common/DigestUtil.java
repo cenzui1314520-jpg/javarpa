@@ -11,14 +11,10 @@ public final class DigestUtil {
 
     private DigestUtil() {}
 
-    public static String md5Hex(byte[] data) {
-        return digest("MD5", data);
-    }
-
-    /** 流式计算文件 MD5，避免整包读入内存。 */
-    public static String md5Hex(java.nio.file.Path file) {
+    /** 流式计算文件 SHA-256，避免整包读入内存。 */
+    public static String sha256Hex(java.nio.file.Path file) {
         try (java.io.InputStream in = java.nio.file.Files.newInputStream(file)) {
-            MessageDigest md = MessageDigest.getInstance("MD5");
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] buf = new byte[8192];
             int n;
             while ((n = in.read(buf)) > 0) {
