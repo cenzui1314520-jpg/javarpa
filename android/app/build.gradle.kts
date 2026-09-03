@@ -31,6 +31,8 @@ android {
 dependencies {
     implementation("org.mozilla:rhino:1.7.14")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    // 扫码配置：纯 Java、无 androidx/appcompat 依赖，minSdk 24 与本工程对齐
+    // 扫码：zxing-android-embedded 把 androidx.core 声明为 compileOnly（由宿主自带），
+    // 缺了会在打开相机时 NoClassDefFoundError 闪退，必须显式引入
+    implementation("androidx.core:core:1.9.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }
