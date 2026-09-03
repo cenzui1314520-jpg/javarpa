@@ -28,3 +28,6 @@ server/data/
 data/
 logs/
 *.log
+
+# Mimosa 本地扫描状态
+.mimosa/
